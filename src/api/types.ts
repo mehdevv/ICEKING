@@ -1,0 +1,121 @@
+export type UserRole = "owner" | "worker";
+
+export interface User {
+  id: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  isActive: boolean;
+  workerQrToken?: string;
+}
+
+export interface ShopSettings {
+  id: string;
+  businessName: string;
+  logoUrl: string | null;
+  cardTemplateUrl: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  currency: string;
+  timezone: string;
+  stampThreshold: number;
+  maxScansPerDay: number;
+  rewardType: string;
+  rewardValue: string | null;
+  trackProducts: boolean;
+  whatsappToken?: string | null;
+  whatsappPhoneId?: string | null;
+  emailSender?: string | null;
+  whatsappConfigured?: boolean;
+  emailConfigured?: boolean;
+}
+
+export interface Client {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  email: string | null;
+  fidelityQrToken: string;
+  totalStamps: number;
+  currentCycleStamps: number;
+  totalRewardsEarned: number;
+  enrolledAt: string;
+  lastScanAt: string | null;
+  notes: string | null;
+  isBlocked: boolean;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  sku: string | null;
+  category: string | null;
+  price: number;
+  isActive: boolean;
+}
+
+export interface Worker {
+  id: string;
+  fullName: string;
+  email: string;
+  isActive: boolean;
+  scanCount: number;
+  workerQrToken: string;
+}
+
+export interface ScanLog {
+  id: string;
+  clientName: string | null;
+  workerName: string | null;
+  scanType: string;
+  status: string;
+  stampsAdded: number;
+  rewardTriggered: boolean;
+  scannedAt: string;
+}
+
+export interface Reward {
+  id: string;
+  clientName: string | null;
+  rewardDescription: string;
+  createdAt: string;
+  redeemedAt: string | null;
+  redeemedByWorkerName: string | null;
+}
+
+export interface ClientCard {
+  businessName: string;
+  clientName: string;
+  primaryColor: string;
+  cardUrl: string | null;
+  cardTemplateUrl: string | null;
+  stampThreshold: number;
+  currentCycleStamps: number;
+  fidelityQrToken: string;
+  pendingRewardId?: string | null;
+  pendingRewardDescription?: string | null;
+  recentScans?: { scannedAt: string; status: string; stampsAdded: number }[];
+}
+
+export interface RewardClaim {
+  id: string;
+  clientName: string;
+  rewardDescription: string;
+  createdAt: string;
+  redeemedAt: string | null;
+  businessName: string;
+  primaryColor: string;
+  fidelityQrToken: string;
+}
+
+export interface AnalyticsOverview {
+  totalClients: number;
+  newClientsThisWeek: number;
+  scansToday: number;
+  scansThisWeek: number;
+  rewardsPending: number;
+  fraudAlertsToday: number;
+  activeWorkers: number;
+  dailyScans: { date: string; count: number }[];
+  dailyEnrolments: { date: string; count: number }[];
+}

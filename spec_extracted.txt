@@ -1,0 +1,1245 @@
+
+LOYALQR
+Technical Specification & Design System
+QR Loyalty Platform  |  v1.0  |  2025
+
+Admin Dashboard
+Employee Scanner
+Customer Cards
+
+Confidential  |  loyalqr.com  |  contact@loyalqr.com
+
+PART ONE — TECHNICAL SPECIFICATION
+01  Project Overview
+What we are building and why
+
+1.1  Purpose
+LoyalQR is a web-based digital loyalty platform for retail shops. It replaces paper stamp cards with QR-powered digital fidelity cards, tracks every purchase through employee scanning, detects fraud automatically, and provides the owner with full analytics and customer CRM — all from a single platform, with no mobile app required for customers.
+1.2  Scope (In / Out)
+Feature
+In Scope
+Notes
+QR fidelity cards
+YES
+Generated per customer, no app needed
+Employee scanning workflow
+YES
+Mobile-optimised web screen
+Anti-fraud detection
+YES
+Rules engine + audit log
+Admin analytics dashboard
+YES
+KPIs, charts, leaderboards
+Customer account portal
+YES
+View stamps, history, rewards
+WhatsApp / SMS campaigns
+NO
+Excluded from this build
+Email campaigns
+NO
+Excluded from this build
+Mobile native app
+NO
+Web PWA only
+Payment processing
+NO
+Out of scope
+
+1.3  Users & Roles
+Role
+Access Level
+Primary Interface
+Key Actions
+Owner / Admin
+Full
+Desktop + Mobile
+Dashboard, analytics, config, CRM, fraud review
+Employee
+Limited
+Mobile-first scanner
+Scan customer cards, select product, confirm purchase
+Customer
+Self only
+Mobile (any browser)
+Enrol, view card & stamps, claim rewards
+
+
+02  System Architecture
+Technology stack, layers, and infrastructure
+
+2.1  Technology Stack
+Layer
+Technology
+Rationale
+Frontend
+Next.js 14 (App Router) + TypeScript
+SSR for SEO, RSC for performance
+Styling
+Tailwind CSS + shadcn/ui
+Rapid, consistent UI
+Backend / API
+Next.js API Routes (REST)
+Single codebase, edge-ready
+Database
+PostgreSQL (Supabase)
+Relational, RLS for multi-tenant isolation
+ORM
+Prisma
+Type-safe queries, easy migrations
+Authentication
+NextAuth.js (JWT)
+Session management for all roles
+QR Generation
+qrcode.js (server-side)
+SVG/PNG QR code output
+QR Scanning
+html5-qrcode (client)
+Camera scanning in browser
+File Storage
+Supabase Storage
+Card images, logos
+Hosting
+Vercel
+Edge network, zero-config deploys
+Analytics Charts
+Recharts
+Lightweight, composable
+
+2.2  Architecture Layers
+The app follows a standard 3-tier architecture: Presentation → Business Logic → Data. All business rules (fraud detection, stamp counting, reward triggering) live exclusively in the API layer — never in the client.
+
+Layer
+Responsibility
+Files / Modules
+Presentation
+UI components, pages, routing
+/app, /components, /styles
+API (BLL)
+Validation, fraud rules, stamps, rewards
+/app/api, /lib/services
+Data Access
+DB queries via Prisma
+/lib/db, /prisma/schema.prisma
+Infrastructure
+Auth, storage, QR generation
+/lib/auth, /lib/qr, /lib/storage
+
+2.3  Deployment Topology
+All environments (dev / staging / prod) on Vercel
+PostgreSQL on Supabase — separate projects per environment
+Environment variables managed via Vercel project settings
+CI/CD: GitHub Actions — lint, typecheck, migrate, deploy on merge to main
+Database backups: Supabase daily automatic snapshots
+
+
+03  Data Model
+Database schema — all entities and relationships
+
+3.1  Entity Overview
+Entity
+Description
+Key Relations
+Shop
+The business (top-level tenant)
+Has many Users, Products, Customers
+User
+Owner or Employee account
+Belongs to Shop; role: OWNER | EMPLOYEE
+Customer
+Enrolled loyalty member
+Belongs to Shop; has FidelityCard, Scans
+FidelityCard
+Digital stamp card per customer
+Belongs to Customer; has Stamps, QR code
+Product
+Shop's product catalogue item
+Belongs to Shop; referenced in ScanItems
+Scan
+One validated purchase scan event
+Links Employee, Customer, Products
+ScanItem
+Product line within a scan
+Belongs to Scan and Product
+Reward
+Earned reward instance
+Belongs to Customer; status: PENDING | REDEEMED
+FraudEvent
+Blocked/flagged scan record
+Links to Scan attempt and Employee
+ShopSettings
+Config per shop
+Belongs to Shop; stamp threshold, fraud limits
+
+3.2  Key Fields — FidelityCard
+Field
+Type
+Description
+id
+UUID
+Primary key
+customerId
+UUID FK
+Owner customer
+shopId
+UUID FK
+Owning shop
+stampCount
+Int
+Current accumulated stamps
+totalScans
+Int
+All-time validated scans
+qrToken
+String (unique)
+Signed JWT embedded in QR code
+qrImageUrl
+String
+URL of generated QR PNG in storage
+isActive
+Boolean
+Soft block by admin
+createdAt
+DateTime
+Enrolment date
+lastScanAt
+DateTime?
+Last successful scan timestamp
+
+3.3  Key Fields — Scan
+Field
+Type
+Description
+id
+UUID
+Primary key
+shopId
+UUID FK
+Shop context
+employeeId
+UUID FK
+Worker who processed scan
+customerId
+UUID FK
+Customer scanned
+fidelityCardId
+UUID FK
+Card that was scanned
+status
+Enum
+APPROVED | BLOCKED | PENDING
+fraudReason
+String?
+Populated when status = BLOCKED
+stampAwarded
+Boolean
+Whether stamp was counted
+scannedAt
+DateTime
+Timestamp of scan (immutable)
+
+
+04  API Routes
+All REST endpoints by domain
+
+4.1  Authentication
+Method
+Endpoint
+Auth
+Description
+POST
+/api/auth/login
+Public
+Email + password login, returns JWT session
+POST
+/api/auth/logout
+Session
+Clears session
+GET
+/api/auth/me
+Session
+Returns current user profile and role
+
+4.2  Customer Enrolment
+Method
+Endpoint
+Auth
+Description
+POST
+/api/customers/enrol
+Public (shop QR)
+Create customer + fidelity card; returns card URL
+GET
+/api/customers/:id
+Owner | Customer (own)
+Get customer profile
+GET
+/api/customers/:id/card
+Customer (own)
+Get card with stamp count and QR
+PATCH
+/api/customers/:id
+Owner
+Update or block customer
+DELETE
+/api/customers/:id/gdpr
+Owner
+Anonymise personal data (GDPR)
+
+4.3  Scanning & Stamps
+Method
+Endpoint
+Auth
+Description
+POST
+/api/scans
+Employee
+Process scan — runs fraud checks, awards stamp
+GET
+/api/scans
+Owner
+List all scans with filters (date, employee, status)
+GET
+/api/scans/:id
+Owner
+Single scan detail
+
+4.4  Fraud Events
+Method
+Endpoint
+Auth
+Description
+GET
+/api/fraud
+Owner
+List all fraud events with filters
+GET
+/api/fraud/:id
+Owner
+Fraud event detail with full context
+POST
+/api/fraud/:id/review
+Owner
+Mark as reviewed / override block
+
+4.5  Rewards
+Method
+Endpoint
+Auth
+Description
+GET
+/api/rewards
+Owner
+List all rewards (pending / redeemed)
+PATCH
+/api/rewards/:id/redeem
+Employee | Owner
+Mark reward as redeemed
+
+4.6  Analytics
+Method
+Endpoint
+Auth
+Description
+GET
+/api/analytics/overview
+Owner
+KPI cards: enrollments, scans, rewards, fraud
+GET
+/api/analytics/scans-over-time
+Owner
+Daily scan counts for chart (30/90 days)
+GET
+/api/analytics/top-products
+Owner
+Best-selling products by scan volume
+GET
+/api/analytics/employee-leaderboard
+Owner
+Employees ranked by scans
+GET
+/api/analytics/client-leaderboard
+Owner
+Customers ranked by stamps
+
+4.7  Products
+Method
+Endpoint
+Auth
+Description
+GET
+/api/products
+Owner | Employee
+List shop products
+POST
+/api/products
+Owner
+Create product
+PATCH
+/api/products/:id
+Owner
+Update product
+DELETE
+/api/products/:id
+Owner
+Archive product
+
+4.8  Settings
+Method
+Endpoint
+Auth
+Description
+GET
+/api/settings
+Owner
+Get shop settings
+PATCH
+/api/settings
+Owner
+Update stamp threshold, fraud rules, card design
+
+
+05  Fraud Detection Engine
+Rules, logic flow, and audit trail
+
+5.1  Fraud Rules — Applied on Every Scan
+Rule ID
+Rule Name
+Logic
+Action on Trigger
+FR-01
+Max Daily Scans
+Same customer scanned > N times today (N configurable, default 2)
+BLOCK — stamp not awarded
+FR-02
+Employee-Customer Cooldown
+Same employee + same customer within T minutes (default 5 min)
+BLOCK — stamp not awarded
+FR-03
+Inactive Card
+Customer card flagged isActive=false by admin
+BLOCK — always
+FR-04
+Invalid QR Token
+QR JWT signature invalid or expired
+BLOCK — always
+FR-05
+Rapid Sequential Scans
+Same customer scanned by any employee within 60 seconds
+BLOCK — possible device sharing
+FR-06
+Employee Self-Scan
+Employee scans their own fidelity card (if they have one)
+BLOCK — always
+
+5.2  Scan Processing Flow
+All checks run server-side in a single atomic transaction. The client receives only APPROVED or BLOCKED — never partial state.
+
+Request arrives at POST /api/scans with employee session + QR token + productIds
+Verify JWT session — reject if invalid or insufficient role
+Decode and verify QR token signature — FR-04
+Load FidelityCard; check isActive — FR-03
+Run FR-01: count today's approved scans for this customer
+Run FR-02: check employee+customer within cooldown window
+Run FR-05: check any scan in last 60s for this customer
+Run FR-06: check if scanned card belongs to employee
+If any rule triggered: insert FraudEvent, return BLOCKED response
+If all clear: increment stampCount on FidelityCard
+Check if stampCount >= shop threshold — if so: create Reward(PENDING), notify via response flag
+Insert Scan record (APPROVED), insert ScanItems for each product
+Return JSON: { status: APPROVED, newStampCount, rewardTriggered }
+
+
+06  QR Code System
+Generation, validation, and security
+
+6.1  QR Token Specification
+Field
+Value
+Purpose
+Algorithm
+HS256 JWT
+Signed with shop-specific secret
+Payload: sub
+fidelityCardId (UUID)
+Card identifier
+Payload: shopId
+shopId (UUID)
+Scope to correct tenant
+Payload: iat
+Unix timestamp
+Issued-at for audit
+Expiry
+None (non-expiring)
+Token revoked by isActive=false
+QR Format
+PNG 400x400px
+Stored in Supabase Storage
+QR Error Correction
+Level M (15%)
+Works even if card image is worn
+
+6.2  Customer QR Code (Fidelity Card)
+Generated server-side at enrolment using qrcode library
+QR encodes a signed JWT (not raw UUID) — prevents manual forgery
+Card image composed: shop logo + customer name + stamp grid + QR code
+Delivered as PNG download and Add to Wallet (Apple/Google PKPass — Phase 2)
+
+6.3  Shop Enrolment QR Code
+One static QR per shop, points to: https://loyalqr.com/enrol/{shopSlug}
+Regenerable by owner (invalidates old printouts — warn in UI)
+Displayed in dashboard for printing or screen display
+
+
+07  Security
+Data protection, authentication, and access control
+
+7.1  Authentication
+Mechanism
+Details
+Session type
+JWT stored in httpOnly cookie (NextAuth default)
+Password hashing
+bcrypt with cost factor 12
+Session expiry
+Owner: 7 days; Employee: 24 hours (shorter for shared devices)
+CSRF protection
+NextAuth built-in CSRF token on all mutations
+Rate limiting
+Login endpoint: 10 attempts / 15 min per IP (middleware)
+
+7.2  Authorization (RBAC)
+Resource
+OWNER
+EMPLOYEE
+CUSTOMER
+Admin dashboard
+Full access
+No access
+No access
+Analytics
+Full access
+Own stats only
+No access
+Customer list
+Full CRUD
+No access
+Own record only
+Scan (create)
+Yes
+Yes — own shop only
+No
+Fraud events
+View + review
+No access
+No access
+Settings
+Full CRUD
+No access
+No access
+Products
+Full CRUD
+Read only
+No access
+
+7.3  Data Security
+All traffic HTTPS only (HSTS enforced)
+Row-Level Security (RLS) on Supabase — all queries scoped to shopId
+No sensitive data in client-side JS bundles
+QR tokens are JWTs signed with a per-shop secret — a token from Shop A cannot be replayed in Shop B
+GDPR delete: anonymise customer name, email, phone — retain scan records with anonymised FK
+
+
+08  Screen Inventory
+All pages and their primary components
+
+8.1  Public / Customer Screens
+Route
+Screen Name
+Key Components
+/enrol/:shopSlug
+Customer Enrolment
+Shop branding, name/phone/email form, submit → card generated
+/card/:token
+My Fidelity Card
+Stamp grid, QR code, reward status, download button
+/rewards/:token
+Reward Claim
+Reward detail, show-to-staff QR, claim status
+
+8.2  Employee Screens
+Route
+Screen Name
+Key Components
+/employee/login
+Employee Login
+Email + password, shop logo
+/employee/scan
+Scanner Screen
+Camera viewfinder, product selector, result banner
+/employee/history
+My Scan History
+List of today's scans, stamp awarded indicator
+
+8.3  Owner / Admin Screens
+Route
+Screen Name
+Key Components
+/admin
+Dashboard Overview
+KPI cards, scan trend chart, fraud alert banner, quick links
+/admin/clients
+Client List
+Searchable table, sort, filter by stamp range
+/admin/clients/:id
+Client Profile
+Full history, stamps, rewards, notes, block toggle
+/admin/scans
+Scan Log
+Full log with filters, fraud highlights, CSV export
+/admin/fraud
+Fraud Events
+Blocked scan list, rule triggered, review actions
+/admin/rewards
+Rewards
+Pending / redeemed rewards, mark-as-redeemed button
+/admin/employees
+Employee Management
+Create/deactivate employees, performance stats
+/admin/products
+Product Catalogue
+Add/edit/archive products, categories
+/admin/analytics
+Analytics
+Scans over time, top products, employee & client leaderboards
+/admin/settings
+Settings
+Shop info, logo, stamp threshold, fraud config, card design
+
+
+PART TWO — DESIGN SYSTEM
+09  Brand Identity
+Logo, name, and brand voice
+
+9.1  Brand Positioning
+LoyalQR is positioned as a professional yet approachable B2B SaaS product for independent shop owners. The design language should feel modern, trustworthy, and efficient — never playful or gimmicky.
+
+9.2  Brand Voice
+Attribute
+What It Means
+Example
+Clear
+No jargon. Owners understand immediately.
+"Scan awarded" not "Transaction processed"
+Confident
+Decisive language, not tentative.
+"Your customer earned a reward" not "It seems a reward may have been earned"
+Efficient
+Short labels, no filler text.
+"3 scans today" not "You have had 3 scans today"
+Friendly
+Warm but professional; not casual.
+"Welcome back, Ahmed" not "Yo, Ahmed!"
+
+9.3  Logo Usage
+Primary logo: "LoyalQR" wordmark in Inter Bold, primary blue (#1A56DB)
+Minimum size: 120px wide in digital, 30mm in print
+Clear space: equal to the height of the letter 'L' on all sides
+Approved on: white, light grey (#F9FAFB), primary blue (white version)
+Never: stretch, rotate, recolor outside approved palette, or add effects
+
+
+10  Color System
+Full palette, tokens, and usage rules
+
+10.1  Primary Palette
+Swatch
+Hex
+Token
+Usage
+ 
+#1A56DB
+--color-primary-600
+Primary buttons, links, active states, headings
+ 
+#1E429F
+--color-primary-700
+Primary hover, section banners, dark emphasis
+ 
+#EBF5FF
+--color-primary-50
+Table row alternates, light section backgrounds
+ 
+#C3DAFE
+--color-primary-200
+Focus rings, subtle borders on primary elements
+
+10.2  Semantic Colors
+Swatch
+Hex
+Token
+Usage
+ 
+#0E9F6E
+--color-success-600
+Approved scan banner, reward earned, positive KPIs
+ 
+#D1FAE5
+--color-success-100
+Success alert backgrounds
+ 
+#E02424
+--color-danger-600
+Fraud events, blocked scans, delete actions
+ 
+#FDE8E8
+--color-danger-100
+Fraud alert backgrounds, error states
+ 
+#C27803
+--color-warning-600
+Pending rewards, caution states
+ 
+#FDF6B2
+--color-warning-100
+Warning alert backgrounds
+
+10.3  Neutral Palette
+Swatch
+Hex
+Token
+Usage
+ 
+#111928
+--color-neutral-900
+Page titles, primary text
+ 
+#374151
+--color-neutral-700
+Body text, descriptions
+ 
+#6B7280
+--color-neutral-500
+Placeholder text, secondary labels, timestamps
+ 
+#E5E7EB
+--color-neutral-200
+Dividers, table borders, input borders
+ 
+#F9FAFB
+--color-neutral-100
+Page backgrounds, disabled states
+ 
+#FFFFFF
+--color-white
+Card surfaces, modal backgrounds, input fill
+
+
+11  Typography
+Typefaces, scale, and usage rules
+
+11.1  Type Families
+Role
+Family
+Weights Used
+Where
+UI / Interface
+Inter
+400, 500, 600, 700
+All app screens, labels, body copy
+Display / Marketing
+Inter
+700, 800
+Landing page headlines, hero text
+Monospace / Code
+JetBrains Mono
+400, 500
+QR token display, API keys, technical values
+
+11.2  Type Scale (rem base 16px)
+Token
+Size
+Line-Height
+Usage
+text-xs
+12px / 0.75rem
+1.5
+Badges, helper micro-text, timestamps
+text-sm
+14px / 0.875rem
+1.5
+Table cells, form labels, secondary info
+text-base
+16px / 1rem
+1.5
+Body text, descriptions, list items
+text-lg
+18px / 1.125rem
+1.5
+Section intro text, card subtitles
+text-xl
+20px / 1.25rem
+1.4
+Card titles, sidebar section headers
+text-2xl
+24px / 1.5rem
+1.3
+Page headings (H2 equivalent)
+text-3xl
+30px / 1.875rem
+1.25
+Page titles (H1 equivalent)
+text-4xl
+36px / 2.25rem
+1.2
+Dashboard KPI numbers, hero display
+
+All text at text-sm and above must meet WCAG AA contrast ratio (4.5:1 for normal text, 3:1 for large text). Use neutral-700 (#374151) minimum on white backgrounds.
+
+
+12  Spacing & Layout
+Grid, spacing scale, and responsive breakpoints
+
+12.1  Spacing Scale (4px base)
+Token
+Value
+Usage
+space-1
+4px
+Micro gaps — icon-to-label, badge padding
+space-2
+8px
+Tight padding — compact table cells, inline gaps
+space-3
+12px
+Form field inner padding (y-axis)
+space-4
+16px
+Standard inner padding for cards and form elements
+space-5
+20px
+Component gap in flex rows
+space-6
+24px
+Section separation within a card
+space-8
+32px
+Card outer margins, page section gaps
+space-12
+48px
+Major page section separators
+space-16
+64px
+Hero/banner vertical padding
+
+12.2  Layout Grid
+Breakpoint
+Min Width
+Columns
+Gutter
+Max Content Width
+sm (mobile)
+< 640px
+4
+16px
+100%
+md (tablet)
+640px
+8
+24px
+100%
+lg (desktop)
+1024px
+12
+24px
+1280px
+xl (wide)
+1280px
+12
+32px
+1440px
+
+12.3  Page Layout Regions
+Region
+Width
+Notes
+Sidebar (admin)
+256px fixed
+Collapses to icon-only at md breakpoint
+Main content
+Fluid
+max-w-7xl, centered with px-8 padding
+Topbar
+Full width
+h-16, position sticky top-0, z-50
+Modal
+max-w-lg / max-w-2xl
+Centered overlay, backdrop blur
+Drawer (mobile)
+100vw
+Slides from bottom on mobile scanner screen
+
+
+13  Component Library
+Core UI components and their variants
+
+13.1  Buttons
+Variant
+Background
+Text
+Border
+Usage
+Primary
+#1A56DB
+White
+None
+Main CTA: Save, Confirm, Submit
+Secondary
+White
+#1A56DB
+#1A56DB 1px
+Secondary actions: Cancel, Back
+Danger
+#E02424
+White
+None
+Destructive: Delete, Block
+Ghost
+Transparent
+#374151
+None
+Tertiary: icon buttons, table row actions
+Disabled
+#E5E7EB
+#6B7280
+None
+Any disabled state — not clickable
+
+Button sizes: sm (h-8, px-3, text-sm), md (h-10, px-4, text-base — default), lg (h-12, px-6, text-lg). All buttons have rounded-lg (8px radius) and focus-visible ring of 2px primary-200.
+
+13.2  Form Elements
+Element
+Height
+Padding
+Border
+Focus State
+Text Input
+40px
+px-3 py-2
+1px neutral-200, rounded-lg
+2px ring primary-200, border primary-600
+Select
+40px
+px-3 py-2
+1px neutral-200, rounded-lg
+2px ring primary-200
+Textarea
+auto
+px-3 py-2
+1px neutral-200, rounded-lg
+2px ring primary-200
+Checkbox
+18px
+—
+1px neutral-300, rounded
+ring-offset-2 primary-600
+Toggle Switch
+24px
+—
+—
+Off: neutral-300 / On: primary-600
+
+13.3  Cards
+Card Type
+Background
+Border / Shadow
+Padding
+Usage
+Default Card
+White
+shadow-sm, rounded-xl
+p-6
+Dashboard sections, lists
+KPI Card
+White
+shadow-sm, rounded-xl
+p-5
+Analytics overview numbers
+Alert — Info
+#EBF5FF
+border-l-4 primary
+p-4
+Info messages, tips
+Alert — Success
+#D1FAE5
+border-l-4 success
+p-4
+Scan approved, reward earned
+Alert — Danger
+#FDE8E8
+border-l-4 danger
+p-4
+Fraud event, error state
+Alert — Warning
+#FDF6B2
+border-l-4 warning
+p-4
+Pending reward, caution
+
+13.4  Badges / Status Pills
+Status
+Background
+Text Color
+Used For
+APPROVED
+#D1FAE5
+#065F46
+Scan log, scan result confirmation
+BLOCKED
+#FDE8E8
+#9B1C1C
+Fraud events, blocked scans
+PENDING
+#FDF6B2
+#92400E
+Rewards awaiting redemption
+REDEEMED
+#EBF5FF
+#1E429F
+Completed rewards
+ACTIVE
+#D1FAE5
+#065F46
+Customer/employee status
+INACTIVE
+#E5E7EB
+#374151
+Deactivated employees, blocked customers
+
+
+14  Iconography & Motion
+Icon system and animation standards
+
+14.1  Icon Library
+Use Lucide React exclusively. Icon sizes follow a 3-step scale: sm (16px), md (20px — default), lg (24px).
+
+Context
+Icon Name (Lucide)
+Notes
+Navigation — Dashboard
+LayoutDashboard
+
+Navigation — Clients
+Users
+
+Navigation — Scan Log
+ScanLine
+
+Navigation — Fraud
+ShieldAlert
+
+Navigation — Rewards
+Gift
+
+Navigation — Employees
+UserCheck
+
+Navigation — Products
+Package
+
+Navigation — Analytics
+BarChart3
+
+Navigation — Settings
+Settings
+
+Action — Add
+Plus
+Always paired with text label
+Action — Edit
+Pencil
+Icon-only in table rows (tooltip required)
+Action — Delete
+Trash2
+Icon-only; confirm modal always required
+Action — Export CSV
+Download
+
+Action — Block/Unblock
+Ban / Unlock
+Toggle based on current state
+Status — Approved
+CheckCircle2
+Green fill
+Status — Blocked
+XCircle
+Red fill
+Status — Pending
+Clock
+Yellow fill
+QR / Scan
+QrCode
+Scanner screen header
+
+14.2  Motion & Transitions
+Interaction
+Duration
+Easing
+Property
+Button hover
+150ms
+ease-in-out
+background-color, box-shadow
+Dropdown / menu open
+200ms
+ease-out
+opacity, transform (translateY)
+Modal open
+250ms
+ease-out
+opacity, transform (scale)
+Toast notification
+300ms
+ease-in-out
+opacity, transform (translateY)
+Scan result banner
+400ms
+spring
+opacity, scale — celebratory on APPROVED
+Page transition
+200ms
+ease
+opacity — Next.js route change
+
+Never animate layout properties (width, height, top, left) — always prefer transform and opacity for performance. Respect prefers-reduced-motion: wrap all animations in the Tailwind motion-safe: variant.
+
+
+15  Screen-Specific Design Notes
+Key UX decisions per screen
+
+15.1  Employee Scanner Screen
+The scanner screen is the most performance-critical UI in the app. It must work reliably on low-end Android devices with poor cameras in dimly lit shops.
+
+Viewfinder: full-width rectangle, 1:1 ratio, dark overlay with cutout. Scanning line animation (top to bottom, 2s loop)
+On successful decode: haptic feedback (navigator.vibrate), immediate API call
+Result state: full-screen banner — GREEN (#0E9F6E) for APPROVED, RED (#E02424) for BLOCKED
+If APPROVED: show customer name, stamp count, reward triggered indicator
+If BLOCKED: show fraud rule that triggered (plain language)
+Product selector: bottom sheet drawer, scrollable list with checkbox, confirm button
+Auto-reset to camera after 3 seconds post-result
+One-thumb operable — all tap targets min 48x48px
+
+15.2  Customer Fidelity Card
+Stamp grid: visualised as filled / empty circles (e.g. 9 slots for threshold 9)
+Stamp icon: custom per shop (default: star) — configurable in settings
+QR code: displayed at 200x200px minimum, centred, with 16px quiet zone
+Shop branding: logo in top-left, brand colour as background gradient
+Download button: generates PNG of full card for saving to camera roll
+Reward badge: animated gold badge overlaid when reward is pending
+
+15.3  Admin Dashboard Overview
+4 KPI cards in a 2x2 grid (mobile) or 4-column row (desktop): Total Clients, Scans Today, Rewards Pending, Fraud Alerts
+Scan trend chart: area chart, 30 days, primary blue fill
+Fraud alert banner: only shown if fraudCount > 0 today — orange/red, links to Fraud Events
+Quick action buttons below KPIs: View Scan Log, Export Contacts, View Rewards
+
+15.4  Fraud Events Screen
+Default filter: unreviewed events only
+Each row: timestamp, employee name, customer name, rule triggered (plain language badge), Review button
+Review modal: shows full scan context + employee + customer history + action buttons (Mark Reviewed / Override Block)
+Fraud rows highlighted with a left-border red stripe (border-l-4 danger)
+
+
+16  Accessibility
+Standards, requirements, and testing
+
+16.1  Standards Target
+WCAG 2.1 Level AA compliance for all screens in the admin and employee interfaces. Customer-facing screens target AAA where feasible.
+
+16.2  Requirements
+Requirement
+Detail
+Colour contrast
+4.5:1 minimum for body text; 3:1 for large text and UI elements
+Keyboard navigation
+All interactive elements reachable and operable by keyboard
+Focus indicators
+Visible focus ring on all interactive elements (2px, primary-200)
+Screen readers
+All images have alt text; icons have aria-label or aria-hidden
+Form labels
+All inputs have associated <label> elements — no placeholder-only labeling
+Error messages
+Form errors announced via aria-live region, not colour alone
+Skip links
+Skip-to-main-content link as first focusable element on each page
+Touch targets
+Minimum 48x48px for all interactive elements on mobile
+Reduced motion
+All CSS animations wrapped in @media (prefers-reduced-motion: no-preference)
+
+
+17  Responsive Design
+Behaviour across device sizes
+
+Screen
+Mobile (< 640px)
+Tablet (640-1023px)
+Desktop (1024px+)
+Admin sidebar
+Hidden — hamburger menu
+Icon-only collapsed
+Full 256px expanded
+KPI cards
+2x2 grid
+4-column row
+4-column row
+Data tables
+Horizontal scroll
+Horizontal scroll
+Full columns visible
+Charts
+Single column
+Single column
+Side-by-side possible
+Modals
+Full-screen drawer
+Centered modal
+Centered modal
+Scanner
+Full screen
+Full screen
+Centred 500px max-width
+Fidelity card
+Full width
+Centered 400px
+Centered 400px
+
+
+18  Build Milestones
+Phased delivery plan
+
+Phase
+Milestone
+Deliverables
+Phase 1
+Core Foundation (Weeks 1-2)
+Project setup, DB schema, auth (all roles), shop QR enrolment flow, fidelity card generation
+Phase 2
+Scanner & Fraud Engine (Weeks 3-4)
+Employee scanner screen, QR scanning, fraud rules engine, scan log, reward triggering
+Phase 3
+Admin Dashboard (Weeks 5-6)
+Analytics overview, client list + profiles, fraud events screen, rewards management
+Phase 4
+Product Catalogue & Settings (Week 7)
+Product CRUD, product selection in scanner, settings screen, card designer
+Phase 5
+Leaderboards & Polish (Week 8)
+Employee & client leaderboards, CSV exports, accessibility pass, mobile QA
+Phase 6
+Security Hardening & Launch (Week 9)
+Rate limiting, pen-test checklist, GDPR delete, monitoring, production deploy
+
+LoyalQR — Technical Specification & Design System — v1.0 — 2025  |  Confidential

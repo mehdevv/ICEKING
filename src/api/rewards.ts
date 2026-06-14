@@ -1,0 +1,102 @@
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import type { RewardClaim } from "./types";
+import { mapSettings } from "./mappers";
+
+export const getListRewardsQueryKey = (params?: Record<string, unknown>) =>
+  ["rewards", params] as const;
+
+export function useListRewards(params?: { page?: number; limit?: number; status?: string }) {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 20;
+
+  return useQuery({
+    queryKey: getListRewardsQueryKey(params),
+    queryFn: async () => {
+      let query = supabase
+        .from("rewards")
+        .select("*, clients(full_name), redeemer:redeemed_by_worker_id(full_name)", { count: "exact" })
+        .order("created_at", { ascending: false });
+
+      if (params?.status === "pending") query = query.is("redeemed_at", null);
+      if (params?.status === "redeemed") query = query.not("redeemed_at", "is", null);
+
+      const from = (page - 1) * limit;
+      const { data, count, error } = await query.range(from, from + limit - 1);
+      if (error) throw error;
+
+      return {
+        rewards: (data ?? []).map((r) => ({
+          id: r.id,
+          clientName: (r.clients as { full_name?: string } | null)?.full_name ?? null,
+          rewardDescription: r.reward_description,
+          createdAt: r.created_at,
+          redeemedAt: r.redeemed_at,
+          redeemedByWorkerName: (r.redeemer as { full_name?: string } | null)?.full_name ?? null,
+        })),
+        total: count ?? 0,
+        totalPages: Math.ceil((count ?? 0) / limit),
+      };
+    },
+  });
+}
+
+export function useRedeemReward() {
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("rewards")
+        .update({
+          redeemed_at: new Date().toISOString(),
+          redeemed_by_worker_id: user?.id ?? null,
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+  });
+}
+
+export function useGetRewardClaim(token: string, options?: { query?: { enabled?: boolean } }) {
+  return useQuery({
+    queryKey: ["reward-claim", token],
+    enabled: (options?.query?.enabled ?? true) && !!token,
+    queryFn: async (): Promise<RewardClaim | null> => {
+      const { data: client, error: clientError } = await supabase
+        .from("clients")
+        .select("id, full_name, fidelity_qr_token")
+        .eq("fidelity_qr_token", token)
+        .single();
+      if (clientError) return null;
+
+      const { data: reward, error: rewardError } = await supabase
+        .from("rewards")
+        .select("*")
+        .eq("client_id", client.id)
+        .is("redeemed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (rewardError || !reward) return null;
+
+      const { data: settings } = await supabase
+        .from("shop_settings")
+        .select("*")
+        .limit(1)
+        .single();
+
+      const s = settings ? mapSettings(settings) : null;
+
+      return {
+        id: reward.id,
+        clientName: client.full_name,
+        rewardDescription: reward.reward_description,
+        createdAt: reward.created_at,
+        redeemedAt: reward.redeemed_at,
+        businessName: s?.businessName ?? "LoyalQR",
+        primaryColor: s?.primaryColor ?? "#1A56DB",
+        fidelityQrToken: client.fidelity_qr_token,
+      };
+    },
+  });
+}

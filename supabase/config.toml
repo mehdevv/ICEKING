@@ -1,0 +1,10 @@
+project_id = "ice-king-loyalty"
+
+[api]
+enabled = true
+
+[db]
+major_version = 15
+
+[functions]
+verify_jwt = false
