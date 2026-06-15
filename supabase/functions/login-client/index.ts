@@ -1,5 +1,5 @@
-// Paste this ENTIRE file into Supabase Dashboard → Edge Functions → enrol-client
-// Endpoint: {VITE_SUPABASE_URL}/functions/v1/enrol-client — JWT: OFF
+// Paste this ENTIRE file into Supabase Dashboard → Edge Functions → login-client
+// Endpoint: {VITE_SUPABASE_URL}/functions/v1/login-client — JWT: OFF
 // Local app: http://localhost:5173/client — All links: supabase/functions/LINKS.md
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import bcrypt from "https://esm.sh/bcryptjs@2.4.3";
@@ -27,16 +27,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { fullName, phone, email, password } = await req.json();
+    const { phone, password } = await req.json();
 
-    if (!fullName || typeof fullName !== "string") {
-      return jsonResponse({ error: "fullName is required" }, 400);
-    }
     if (!phone || typeof phone !== "string") {
       return jsonResponse({ error: "phone is required" }, 400);
     }
-    if (!password || typeof password !== "string" || password.length < 6) {
-      return jsonResponse({ error: "password must be at least 6 characters" }, 400);
+    if (!password || typeof password !== "string") {
+      return jsonResponse({ error: "password is required" }, 400);
     }
 
     const normalizedPhone = normalizePhone(phone);
@@ -45,37 +42,28 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: existing } = await admin
+    const { data: client, error } = await admin
       .from("clients")
-      .select("id")
+      .select("id, full_name, fidelity_qr_token, password_hash, is_blocked")
       .eq("phone", normalizedPhone)
       .maybeSingle();
 
-    if (existing) {
-      return jsonResponse({ error: "A card already exists for this phone number. Please sign in." }, 409);
+    if (error) return jsonResponse({ error: error.message }, 400);
+    if (!client || !client.password_hash) {
+      return jsonResponse({ error: "Invalid phone or password" }, 401);
+    }
+    if (client.is_blocked) {
+      return jsonResponse({ error: "This account has been blocked" }, 403);
     }
 
-    const passwordHash = bcrypt.hashSync(password, 10);
-    const token = crypto.randomUUID();
-
-    const { data: client, error } = await admin
-      .from("clients")
-      .insert({
-        full_name: fullName,
-        phone: normalizedPhone,
-        email: email?.trim() || null,
-        password_hash: passwordHash,
-        fidelity_qr_token: token,
-      })
-      .select("fidelity_qr_token, full_name, phone")
-      .single();
-
-    if (error) return jsonResponse({ error: error.message }, 400);
+    const valid = bcrypt.compareSync(password, client.password_hash);
+    if (!valid) {
+      return jsonResponse({ error: "Invalid phone or password" }, 401);
+    }
 
     return jsonResponse({
       fidelityQrToken: client.fidelity_qr_token,
       fullName: client.full_name,
-      phone: client.phone,
     });
   } catch (e) {
     return jsonResponse({ error: String(e) }, 500);

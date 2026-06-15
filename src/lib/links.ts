@@ -20,6 +20,7 @@ export const APP_PATHS = {
 export const EDGE_FUNCTION_NAMES = [
   "setup-owner",
   "enrol-client",
+  "login-client",
   "create-worker",
   "purchase-scan",
   "confirm-purchase-scan",
@@ -95,7 +96,12 @@ export const EDGE_FUNCTION_META: Record<
   "enrol-client": {
     jwt: "off",
     source: "supabase/functions/enrol-client/index.ts",
-    usedBy: "Customer signup (/client)",
+    usedBy: "Customer signup (/client → Create card)",
+  },
+  "login-client": {
+    jwt: "off",
+    source: "supabase/functions/login-client/index.ts",
+    usedBy: "Customer sign in (/client → Sign in)",
   },
   "create-worker": {
     jwt: "on",

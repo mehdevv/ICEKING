@@ -25,6 +25,7 @@ Example project: `https://oqcvdstwgzmhyqfelqzc.supabase.co`
 |----------|----------|------------|-------------|
 | setup-owner | `{SUPABASE_URL}/functions/v1/setup-owner` | **OFF** | `supabase/functions/setup-owner/index.ts` |
 | enrol-client | `{SUPABASE_URL}/functions/v1/enrol-client` | **OFF** | `supabase/functions/enrol-client/index.ts` |
+| login-client | `{SUPABASE_URL}/functions/v1/login-client` | **OFF** | `supabase/functions/login-client/index.ts` |
 | create-worker | `{SUPABASE_URL}/functions/v1/create-worker` | **ON** | `supabase/functions/create-worker/index.ts` |
 | purchase-scan | `{SUPABASE_URL}/functions/v1/purchase-scan` | **ON** | `supabase/functions/purchase-scan/index.ts` |
 | confirm-purchase-scan | `{SUPABASE_URL}/functions/v1/confirm-purchase-scan` | **ON** | `supabase/functions/confirm-purchase-scan/index.ts` |

@@ -131,8 +131,23 @@ export function useDeleteClient() {
 
 export function useEnrolClient() {
   return useMutation({
-    mutationFn: async ({ data }: { data: { fullName: string; phone?: string; email?: string } }) => {
-      return invokeFunction<{ fidelityQrToken: string }>("enrol-client", data);
+    mutationFn: async ({
+      data,
+    }: {
+      data: { fullName: string; phone: string; password: string; email?: string };
+    }) => {
+      return invokeFunction<{ fidelityQrToken: string; fullName: string; phone: string }>(
+        "enrol-client",
+        data,
+      );
+    },
+  });
+}
+
+export function useLoginClient() {
+  return useMutation({
+    mutationFn: async ({ data }: { data: { phone: string; password: string } }) => {
+      return invokeFunction<{ fidelityQrToken: string; fullName: string }>("login-client", data);
     },
   });
 }
