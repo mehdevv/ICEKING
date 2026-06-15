@@ -7,10 +7,20 @@ import { useEnrolClient, useLoginClient, useGetSettings } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Bookmark } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { celebrate, tabPanel, tapScale } from "@/lib/motion";
+import ClientShell, { ClientCard, ClientLoading } from "@/components/client/client-shell";
+import {
+  AlertCircle,
+  ArrowRight,
+  Loader2,
+  LogIn,
+  PartyPopper,
+  Smartphone,
+  Sparkles,
+  UserPlus,
+} from "lucide-react";
 
 const signupSchema = z
   .object({
@@ -30,20 +40,14 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required."),
 });
 
-type EnrolResult = {
-  fullName: string;
-  phone: string;
-  fidelityQrToken: string;
-};
-
 export default function ClientEnrol() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { data: settings } = useGetSettings();
+  const { data: settings, isLoading } = useGetSettings();
   const enrolClient = useEnrolClient();
   const loginClient = useLoginClient();
-  const [enrolled, setEnrolled] = useState<EnrolResult | null>(null);
-  const [tab, setTab] = useState<"signup" | "login">("signup");
+  const [tab, setTab] = useState<"login" | "signup">("login");
+  const [signupSuccess, setSignupSuccess] = useState<{ name: string; token: string } | null>(null);
 
   const signupForm = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
@@ -55,10 +59,8 @@ export default function ClientEnrol() {
     defaultValues: { phone: "", password: "" },
   });
 
-  const goToCard = (result: EnrolResult) => {
-    setEnrolled(result);
-    toast({ title: tab === "signup" ? "Welcome to the loyalty program!" : "Welcome back!" });
-  };
+  const primary = settings?.primaryColor ?? "#1A56DB";
+  const secondary = settings?.secondaryColor ?? "#0E9F6E";
 
   const onSignup = async (values: z.infer<typeof signupSchema>) => {
     try {
@@ -70,11 +72,7 @@ export default function ClientEnrol() {
           email: values.email || undefined,
         },
       });
-      goToCard({
-        fullName: response.fullName,
-        phone: response.phone,
-        fidelityQrToken: response.fidelityQrToken,
-      });
+      setSignupSuccess({ name: response.fullName, token: response.fidelityQrToken });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Something went wrong";
       if (message.toLowerCase().includes("already exists")) {
@@ -88,200 +86,290 @@ export default function ClientEnrol() {
   const onLogin = async (values: z.infer<typeof loginSchema>) => {
     try {
       const response = await loginClient.mutateAsync({ data: values });
-      goToCard({
-        fullName: response.fullName,
-        phone: values.phone,
-        fidelityQrToken: response.fidelityQrToken,
-      });
+      setLocation(`~/card/${response.fidelityQrToken}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Something went wrong";
       toast({ title: "Sign in failed", description: message, variant: "destructive" });
     }
   };
 
-  if (enrolled) {
-    const cardUrl = `${window.location.origin}/card/${enrolled.fidelityQrToken}`;
+  if (isLoading) return <ClientLoading label="Loading…" />;
+
+  if (signupSuccess) {
     return (
-      <div
-        className="min-h-[100dvh] flex flex-col"
-        style={settings?.primaryColor ? { backgroundColor: settings.primaryColor } : {}}
-      >
-        <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="w-full max-w-md shadow-2xl border-none">
-            <CardHeader className="text-center pb-4">
-              <div className="w-16 h-16 bg-secondary/20 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <Bookmark className="h-8 w-8 text-secondary" />
+      <ClientShell primaryColor={primary} secondaryColor={secondary}>
+        <div className="flex min-h-[100dvh] flex-col items-center justify-center p-4">
+          <ClientCard className="p-8 text-center">
+            <motion.div variants={celebrate} initial="initial" animate="animate">
+              <div
+                className="w-20 h-20 rounded-full mx-auto mb-5 flex items-center justify-center shadow-lg"
+                style={{ background: `linear-gradient(135deg, ${primary}, ${secondary})` }}
+              >
+                <PartyPopper className="h-10 w-10 text-white" />
               </div>
-              <CardTitle className="text-2xl font-bold">Your card is ready!</CardTitle>
-              <CardDescription className="text-base mt-2">
-                Use your phone number and password to sign in next time.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg bg-muted p-4 space-y-2 text-sm">
-                <p><span className="font-medium">Name:</span> {enrolled.fullName}</p>
-                <p><span className="font-medium">Phone:</span> {enrolled.phone}</p>
-              </div>
-              <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100">
-                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-                <p>
-                  <strong>Remember your phone and password.</strong> Bookmark your card link or take a screenshot of your QR code.
-                </p>
-              </div>
-              <Button className="w-full h-12 text-lg" onClick={() => setLocation(`~/card/${enrolled.fidelityQrToken}`)}>
-                View My Loyalty Card
-              </Button>
-              <p className="text-xs text-center text-muted-foreground break-all">{cardUrl}</p>
-            </CardContent>
-          </Card>
+              <h1 className="text-2xl font-bold">Welcome, {signupSuccess.name.split(" ")[0]}!</h1>
+              <p className="text-muted-foreground mt-2 text-sm">
+                Your loyalty card is ready. Use your phone & password to sign in next time.
+              </p>
+              <motion.div {...tapScale()} className="mt-8">
+                <Button
+                  className="w-full h-14 text-lg rounded-2xl shadow-lg"
+                  style={{ backgroundColor: primary }}
+                  onClick={() => setLocation(`~/card/${signupSuccess.token}`)}
+                >
+                  Open My Card
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </motion.div>
+            </motion.div>
+          </ClientCard>
         </div>
-      </div>
+      </ClientShell>
     );
   }
 
-  const shellStyle = settings?.primaryColor ? { backgroundColor: settings.primaryColor } : {};
-
   return (
-    <div className="min-h-[100dvh] flex flex-col" style={shellStyle}>
-      <div className="flex-1 flex flex-col items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-2xl border-none">
-          <CardHeader className="text-center pb-4">
+    <ClientShell primaryColor={primary} secondaryColor={secondary}>
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center p-4 py-8">
+        <ClientCard className="overflow-hidden">
+          <div className="p-6 pb-4 text-center border-b border-border/50">
             {settings?.logoUrl ? (
-              <img src={settings.logoUrl} alt="Logo" className="w-24 h-24 mx-auto object-contain mb-4 rounded-xl" />
+              <motion.img
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                src={settings.logoUrl}
+                alt="Logo"
+                className="w-20 h-20 mx-auto object-contain mb-3 rounded-2xl"
+              />
             ) : (
-              <div className="w-20 h-20 bg-primary/10 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-2xl font-bold text-primary">LQ</span>
+              <div
+                className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center text-white font-bold text-xl shadow-md"
+                style={{ backgroundColor: primary }}
+              >
+                {(settings?.businessName ?? "LQ").slice(0, 2).toUpperCase()}
               </div>
             )}
-            <CardTitle className="text-2xl font-bold">{settings?.businessName || "LoyalQR"} Rewards</CardTitle>
-            <CardDescription className="text-base mt-2">
-              Create your digital loyalty card or sign in with your phone.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={tab} onValueChange={(v) => setTab(v as "signup" | "login")}>
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="signup">Create card</TabsTrigger>
-                <TabsTrigger value="login">Sign in</TabsTrigger>
-              </TabsList>
+            <h1 className="text-xl font-bold tracking-tight">{settings?.businessName || "LoyalQR"}</h1>
+            <p className="text-sm text-muted-foreground mt-1 flex items-center justify-center gap-1">
+              <Sparkles className="h-3.5 w-3.5" />
+              Digital loyalty card
+            </p>
+          </div>
 
-              <TabsContent value="signup">
-                <Form {...signupForm}>
-                  <form onSubmit={signupForm.handleSubmit(onSignup)} className="space-y-4">
-                    <FormField
-                      control={signupForm.control}
-                      name="fullName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Full Name *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="John Doe" className="h-12" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Phone Number *</FormLabel>
-                          <FormControl>
-                            <Input type="tel" placeholder="+213 123 456 789" className="h-12" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email (optional)</FormLabel>
-                          <FormControl>
-                            <Input type="email" placeholder="you@example.com" className="h-12" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password *</FormLabel>
-                          <FormControl>
-                            <Input type="password" placeholder="At least 6 characters" className="h-12" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Confirm Password *</FormLabel>
-                          <FormControl>
-                            <Input type="password" placeholder="Repeat password" className="h-12" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button type="submit" className="w-full h-12 text-lg mt-2 shadow-md" disabled={enrolClient.isPending}>
-                      {enrolClient.isPending ? "Creating card..." : "Create My Card"}
-                    </Button>
-                  </form>
-                </Form>
-              </TabsContent>
+          <div className="p-2">
+            <div className="grid grid-cols-2 gap-1 p-1 bg-muted/60 rounded-2xl m-3">
+              <button
+                type="button"
+                onClick={() => setTab("login")}
+                className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all min-h-12 ${
+                  tab === "login" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground"
+                }`}
+              >
+                <LogIn className="h-4 w-4" />
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("signup")}
+                className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all min-h-12 ${
+                  tab === "signup" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground"
+                }`}
+              >
+                <UserPlus className="h-4 w-4" />
+                New card
+              </button>
+            </div>
 
-              <TabsContent value="login">
-                <Form {...loginForm}>
-                  <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
-                    <FormField
-                      control={loginForm.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Phone Number *</FormLabel>
-                          <FormControl>
-                            <Input type="tel" placeholder="+213 123 456 789" className="h-12" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={loginForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password *</FormLabel>
-                          <FormControl>
-                            <Input type="password" placeholder="Your password" className="h-12" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Don&apos;t have a card yet? Switch to <button type="button" className="text-primary underline" onClick={() => setTab("signup")}>Create card</button>.
+            <div className="px-4 pb-6">
+              <AnimatePresence mode="wait">
+                {tab === "login" ? (
+                  <motion.div key="login" variants={tabPanel} initial="initial" animate="animate" exit="exit">
+                    <p className="text-xs text-muted-foreground mb-4 text-center">
+                      Already have a card? Enter your phone & password.
                     </p>
-                    <Button type="submit" className="w-full h-12 text-lg mt-2 shadow-md" disabled={loginClient.isPending}>
-                      {loginClient.isPending ? "Signing in..." : "Sign In & View Card"}
-                    </Button>
-                  </form>
-                </Form>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+                    <Form {...loginForm}>
+                      <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
+                        <FormField
+                          control={loginForm.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Phone</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                  <Input
+                                    type="tel"
+                                    inputMode="tel"
+                                    autoComplete="tel"
+                                    placeholder="0555 123 456"
+                                    className="h-12 pl-10 rounded-xl text-base"
+                                    {...field}
+                                  />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={loginForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Password</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  autoComplete="current-password"
+                                  placeholder="Your password"
+                                  className="h-12 rounded-xl text-base"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <motion.div {...tapScale()}>
+                          <Button
+                            type="submit"
+                            className="w-full h-14 text-base rounded-2xl font-semibold shadow-md"
+                            style={{ backgroundColor: primary }}
+                            disabled={loginClient.isPending}
+                          >
+                            {loginClient.isPending ? (
+                              <>
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                Opening card…
+                              </>
+                            ) : (
+                              <>
+                                View My Card
+                                <ArrowRight className="ml-2 h-5 w-5" />
+                              </>
+                            )}
+                          </Button>
+                        </motion.div>
+                      </form>
+                    </Form>
+                  </motion.div>
+                ) : (
+                  <motion.div key="signup" variants={tabPanel} initial="initial" animate="animate" exit="exit">
+                    <p className="text-xs text-muted-foreground mb-4 text-center">
+                      First visit? Create your free loyalty card in seconds.
+                    </p>
+                    <Form {...signupForm}>
+                      <form onSubmit={signupForm.handleSubmit(onSignup)} className="space-y-3">
+                        <FormField
+                          control={signupForm.control}
+                          name="fullName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Full name</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="Your name"
+                                  autoComplete="name"
+                                  className="h-12 rounded-xl text-base"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={signupForm.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Phone</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="tel"
+                                  inputMode="tel"
+                                  autoComplete="tel"
+                                  placeholder="0555 123 456"
+                                  className="h-12 rounded-xl text-base"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <FormField
+                            control={signupForm.control}
+                            name="password"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Password</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="password"
+                                    autoComplete="new-password"
+                                    placeholder="Min. 6 chars"
+                                    className="h-12 rounded-xl"
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={signupForm.control}
+                            name="confirmPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Confirm</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="password"
+                                    autoComplete="new-password"
+                                    placeholder="Repeat"
+                                    className="h-12 rounded-xl"
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        <motion.div {...tapScale()}>
+                          <Button
+                            type="submit"
+                            className="w-full h-14 text-base rounded-2xl font-semibold shadow-md mt-2"
+                            style={{ backgroundColor: primary }}
+                            disabled={enrolClient.isPending}
+                          >
+                            {enrolClient.isPending ? (
+                              <>
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                Creating…
+                              </>
+                            ) : (
+                              "Create My Card"
+                            )}
+                          </Button>
+                        </motion.div>
+                      </form>
+                    </Form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex gap-2 mt-4 rounded-xl border border-amber-200/80 bg-amber-50/80 p-3 text-xs text-amber-950">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <p>Remember your phone & password — you&apos;ll need them every visit.</p>
+              </div>
+            </div>
+          </div>
+        </ClientCard>
       </div>
-    </div>
+    </ClientShell>
   );
 }
