@@ -6,18 +6,15 @@ export type StampMilestone = {
 export function parseStampMilestones(raw: unknown): StampMilestone[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter(
-      (item): item is StampMilestone =>
-        typeof item === "object" &&
-        item !== null &&
-        typeof (item as StampMilestone).position === "number" &&
-        typeof (item as StampMilestone).label === "string" &&
-        (item as StampMilestone).label.trim().length > 0,
-    )
-    .map((item) => ({
-      position: Math.floor(item.position),
-      label: item.label.trim(),
-    }))
+    .map((item) => {
+      if (typeof item !== "object" || item === null) return null;
+      const row = item as StampMilestone;
+      const position = Math.floor(Number(row.position));
+      const label = String(row.label ?? "").trim();
+      if (!Number.isFinite(position) || position < 1 || !label) return null;
+      return { position, label };
+    })
+    .filter((item): item is StampMilestone => item !== null)
     .sort((a, b) => a.position - b.position);
 }
 

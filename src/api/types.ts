@@ -97,7 +97,15 @@ export interface ClientCard {
   stampMilestones?: { position: number; label: string }[];
   pendingRewardId?: string | null;
   pendingRewardDescription?: string | null;
+  rewards?: ClientCardReward[];
   recentScans?: { scannedAt: string; status: string; stampsAdded: number }[];
+}
+
+export interface ClientCardReward {
+  id: string;
+  rewardDescription: string;
+  createdAt: string;
+  redeemedAt: string | null;
 }
 
 export interface RewardClaim {

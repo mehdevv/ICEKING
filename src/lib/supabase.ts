@@ -65,3 +65,16 @@ export function extractQrToken(raw: string): string {
     return trimmed;
   }
 }
+
+export type ParsedQr =
+  | { type: "card"; token: string }
+  | { type: "reward"; rewardId: string };
+
+export function parseScannedQr(raw: string): ParsedQr {
+  const trimmed = raw.trim();
+  const rewardMatch = trimmed.match(/^reward:([0-9a-f-]{36})$/i);
+  if (rewardMatch) {
+    return { type: "reward", rewardId: rewardMatch[1] };
+  }
+  return { type: "card", token: extractQrToken(trimmed) };
+}

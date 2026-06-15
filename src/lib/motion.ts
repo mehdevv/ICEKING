@@ -40,6 +40,31 @@ export const celebrate: Variants = {
   },
 };
 
+export const rewardGranted: Variants = {
+  initial: { opacity: 0, scale: 0.6, rotate: -8 },
+  animate: {
+    opacity: 1,
+    scale: [0.6, 1.15, 1],
+    rotate: [ -8, 4, 0 ],
+    transition: reducedMotion
+      ? { duration: 0 }
+      : { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+
+export const confettiBurst: Variants = {
+  initial: { opacity: 0, scale: 0, y: 0 },
+  animate: (i: number) => ({
+    opacity: [0, 1, 0],
+    scale: [0, 1, 0.4],
+    y: [0, -40 - i * 12, -80 - i * 20],
+    x: [0, (i % 2 === 0 ? 1 : -1) * (20 + i * 8), (i % 2 === 0 ? 1 : -1) * (40 + i * 12)],
+    transition: reducedMotion
+      ? { duration: 0 }
+      : { duration: 1.2, delay: i * 0.05, ease: "easeOut" },
+  }),
+};
+
 export const staggerContainer: Variants = {
   initial: {},
   animate: {

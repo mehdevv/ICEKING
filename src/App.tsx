@@ -87,6 +87,7 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/enrol" component={Enrol} />
       <Route path="/card/:code" component={CardView} />
+      <Route path="/reward/:id" component={RewardClaim} />
       <Route path="/rewards/:code" component={RewardClaim} />
 
       <Route path="/dashboard/dashboard/:rest*">

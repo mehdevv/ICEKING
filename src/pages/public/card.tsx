@@ -2,11 +2,11 @@ import { useRef } from "react";
 import { useRoute, Link } from "wouter";
 import { useGetClientCard } from "@/api";
 import { Button } from "@/components/ui/button";
-import { Download, Share2, Gift, ChevronRight } from "lucide-react";
+import { CheckCircle, Gift, ChevronRight, Clock } from "lucide-react";
 import { parseStampMilestones } from "@/lib/stamp-milestones";
 import { QRCodeSVG } from "qrcode.react";
 import { motion } from "framer-motion";
-import { fadeUp, scaleIn, tapScale, vibrate, cardReveal, headerStagger, headerItem } from "@/lib/motion";
+import { fadeUp, scaleIn, vibrate, cardReveal, headerStagger, headerItem } from "@/lib/motion";
 import ClientShell, { ClientLoading } from "@/components/client/client-shell";
 import Mascot from "@/components/brand/mascot";
 import ClientStampGrid from "@/components/client/stamp-grid";
@@ -14,10 +14,9 @@ import CardLinkBar from "@/components/client/card-link-bar";
 import { cardPageUrl, normalizeCardCode } from "@/lib/card-code";
 import { nextMilestoneHintText } from "@/lib/client-i18n";
 import { useClientI18n } from "@/hooks/use-client-i18n";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 
 const FIDELITY_CARD_BG = "/fidelity-card-bg.png";
-const SCAN_HISTORY_WINDOW_MS = 60 * 60 * 1000;
 
 export default function CardView() {
   const [, params] = useRoute("/card/:code");
@@ -29,11 +28,6 @@ export default function CardView() {
   const { data: card, isLoading, error } = useGetClientCard(code, {
     query: { enabled: !!code },
   });
-
-  const isNewCard = useMemo(
-    () => new URLSearchParams(window.location.search).get("new") === "1",
-    [],
-  );
 
   useEffect(() => {
     if (card?.pendingRewardId) vibrate([30, 50, 30]);
@@ -76,29 +70,9 @@ export default function CardView() {
   const progress = Math.min(100, (card.currentCycleStamps / card.stampThreshold) * 100);
   const hint = nextMilestoneHintText(card.currentCycleStamps, card.stampThreshold, milestones, t);
   const dateLocale = lang === "fr" ? "fr-FR" : "en-US";
-  const recentScans = (card.recentScans ?? []).filter(
-    (scan) => Date.now() - new Date(scan.scannedAt).getTime() < SCAN_HISTORY_WINDOW_MS,
-  );
-
-  const handleDownload = async () => {
-    if (!cardRef.current) return;
-    const { default: html2canvas } = await import("html2canvas");
-    const canvas = await html2canvas(cardRef.current, { scale: 2, useCORS: true });
-    const link = document.createElement("a");
-    link.download = `${card.clientName.replace(/\s+/g, "-")}-loyalty-card.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-    vibrate(40);
-  };
-
-  const handleShare = async () => {
-    if (navigator.share) {
-      await navigator.share({
-        title: t("loyaltyCardTitle", { business: card.businessName }),
-        url: window.location.href,
-      });
-    }
-  };
+  const rewards = Array.isArray(card.rewards) ? card.rewards : [];
+  const upcomingMilestones = milestones.filter((m) => m.position > card.currentCycleStamps);
+  const showRewardsSection = rewards.length > 0 || upcomingMilestones.length > 0;
 
   return (
     <ClientShell primaryColor={card.primaryColor} secondaryColor="#0E9F6E">
@@ -109,7 +83,7 @@ export default function CardView() {
         animate="animate"
       >
         <motion.header
-          className="px-4 pt-4 pb-3 flex items-center justify-between gap-3"
+          className="px-5 pt-4 pb-3 flex items-center justify-between gap-3"
           variants={headerStagger}
           initial="initial"
           animate="animate"
@@ -128,55 +102,12 @@ export default function CardView() {
               </p>
             </div>
           </motion.div>
-          <motion.div variants={headerItem} className="flex items-center gap-1.5 shrink-0">
-            <motion.div {...tapScale()}>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 px-2.5 rounded-lg text-xs bg-white/90 shadow-sm border-gray-200"
-                onClick={handleShare}
-                aria-label={t("shareCard")}
-              >
-                <Share2 className="h-3.5 w-3.5" />
-                <span className="ml-1">{t("share")}</span>
-              </Button>
-            </motion.div>
-            <motion.div {...tapScale()}>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 px-2.5 rounded-lg text-xs shadow-sm"
-                onClick={handleDownload}
-                style={{ backgroundColor: card.primaryColor }}
-                aria-label={t("saveCard")}
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span className="ml-1">{t("save")}</span>
-              </Button>
-            </motion.div>
+          <motion.div variants={headerItem} className="shrink-0">
+            <CardLinkBar code={card.cardCode} primaryColor={card.primaryColor} />
           </motion.div>
         </motion.header>
 
-        {card.pendingRewardId && (
-          <motion.div variants={scaleIn} className="px-4 mb-4">
-            <Link
-              href={`/rewards/${card.cardCode}`}
-              className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 shadow-sm active:scale-[0.98] transition-transform"
-            >
-              <div className="h-12 w-12 rounded-full bg-amber-400 flex items-center justify-center shrink-0 shadow-md">
-                <Gift className="h-6 w-6 text-white" />
-              </div>
-              <div className="flex-1 text-left min-w-0">
-                <p className="font-bold text-amber-900">{t("rewardReady")}</p>
-                <p className="text-sm text-amber-800 truncate">{card.pendingRewardDescription}</p>
-              </div>
-              <ChevronRight className="h-5 w-5 text-amber-600 shrink-0" />
-            </Link>
-          </motion.div>
-        )}
-
-        <div className="px-4 flex-1">
+        <div className="px-5 flex-1">
           <motion.div
             ref={cardRef}
             className="relative w-full rounded-3xl overflow-hidden border border-white/70 shadow-[0_8px_32px_rgba(15,23,42,0.12)]"
@@ -244,41 +175,90 @@ export default function CardView() {
             </div>
           </motion.div>
 
-          <div className="mt-4">
-            <CardLinkBar
-              code={card.cardCode}
-              primaryColor={card.primaryColor}
-              prominent={isNewCard}
-            />
-          </div>
-
-          {recentScans.length > 0 && (
-            <motion.div className="mt-6" variants={fadeUp}>
+          {showRewardsSection && (
+            <motion.div variants={scaleIn} className="mt-6">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">
-                {t("recentVisits")}
+                {t("myRewards")}
               </h3>
               <div className="space-y-2">
-                {recentScans.map((scan, i) => (
-                  <motion.div
-                    key={`${scan.scannedAt}-${i}`}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="flex justify-between text-sm bg-white/80 backdrop-blur rounded-xl px-4 py-3 shadow-sm border border-white/60"
-                  >
-                    <span className="text-muted-foreground">
-                      {new Date(scan.scannedAt).toLocaleTimeString(dateLocale, {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    <span
-                      className={
-                        scan.status === "approved" ? "font-semibold text-emerald-600" : "text-destructive"
-                      }
+                {rewards.map((reward, i) => {
+                  const isPending = !reward.redeemedAt;
+                  const inner = (
+                    <>
+                      <div
+                        className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                          isPending ? "bg-amber-400" : "bg-emerald-100"
+                        }`}
+                      >
+                        {isPending ? (
+                          <Gift className="h-5 w-5 text-white" />
+                        ) : (
+                          <CheckCircle className="h-5 w-5 text-emerald-600" />
+                        )}
+                      </div>
+                      <div className="flex-1 text-left min-w-0">
+                        <p className="font-semibold text-foreground truncate">{reward.rewardDescription}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(reward.createdAt).toLocaleDateString(dateLocale, {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                          {" · "}
+                          {isPending ? t("rewardPending") : t("rewardRedeemed")}
+                        </p>
+                        {isPending && (
+                          <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {t("tapToRedeem")}
+                          </p>
+                        )}
+                      </div>
+                      {isPending && <ChevronRight className="h-5 w-5 text-amber-600 shrink-0" />}
+                    </>
+                  );
+
+                  return (
+                    <motion.div
+                      key={reward.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
                     >
-                      {scan.status === "approved" ? `+${scan.stampsAdded}` : t("blocked")}
-                    </span>
+                      {isPending ? (
+                        <Link
+                          href={`/reward/${reward.id}`}
+                          className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 shadow-sm active:scale-[0.98] transition-transform"
+                        >
+                          {inner}
+                        </Link>
+                      ) : (
+                        <Link
+                          href={`/reward/${reward.id}`}
+                          className="flex items-center gap-3 p-4 rounded-2xl bg-white/80 backdrop-blur border border-white/60 shadow-sm active:scale-[0.98] transition-transform"
+                        >
+                          {inner}
+                        </Link>
+                      )}
+                    </motion.div>
+                  );
+                })}
+                {upcomingMilestones.map((milestone, i) => (
+                  <motion.div
+                    key={`upcoming-${milestone.position}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: (rewards.length + i) * 0.05 }}
+                    className="flex items-center gap-3 p-4 rounded-2xl bg-white/60 backdrop-blur border border-dashed border-gray-300"
+                  >
+                    <div className="h-10 w-10 rounded-full flex items-center justify-center shrink-0 bg-gray-100 border border-gray-200">
+                      <Gift className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <p className="font-semibold text-muted-foreground truncate">{milestone.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {t("rewardUpcoming", { position: milestone.position })}
+                      </p>
+                    </div>
                   </motion.div>
                 ))}
               </div>

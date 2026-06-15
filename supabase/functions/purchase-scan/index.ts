@@ -60,14 +60,16 @@ type StampMilestone = { position: number; label: string };
 function parseMilestones(raw: unknown): StampMilestone[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter(
-      (m): m is StampMilestone =>
-        m &&
-        typeof m.position === "number" &&
-        typeof m.label === "string" &&
-        m.label.trim().length > 0,
-    )
-    .map((m) => ({ position: Math.floor(m.position), label: m.label.trim() }));
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const position = Math.floor(Number(row.position));
+      const label = String(row.label ?? "").trim();
+      if (!Number.isFinite(position) || position < 1 || !label) return null;
+      return { position, label };
+    })
+    .filter((item): item is StampMilestone => item !== null)
+    .sort((a, b) => a.position - b.position);
 }
 
 function resolveStampReward(
@@ -310,6 +312,22 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
 
+    if (outcome.rewardTriggered && scan) {
+      const { error: rewardError } = await admin.from("rewards").insert({
+        client_id: client.id,
+        scan_log_id: scan.id,
+        reward_description: outcome.rewardDescription!,
+      });
+
+      if (rewardError) {
+        await admin.from("scan_logs").delete().eq("id", scan.id);
+        return jsonResponse(
+          { error: `Reward could not be saved: ${rewardError.message}` },
+          500,
+        );
+      }
+    }
+
     await admin
       .from("clients")
       .update({
@@ -323,10 +341,23 @@ Deno.serve(async (req) => {
       .eq("id", client.id);
 
     if (outcome.rewardTriggered && scan) {
-      await admin.from("rewards").insert({
-        client_id: client.id,
-        scan_log_id: scan.id,
-        reward_description: outcome.rewardDescription!,
+      const { data: rewardRow } = await admin
+        .from("rewards")
+        .select("id")
+        .eq("scan_log_id", scan.id)
+        .maybeSingle();
+
+      return jsonResponse({
+        approved: true,
+        reason: null,
+        stampsAdded: 1,
+        currentStamps: outcome.finalCycleStamps,
+        stampThreshold: threshold,
+        rewardTriggered: true,
+        rewardDescription: outcome.rewardDescription,
+        rewardId: rewardRow?.id ?? null,
+        needsProducts: false,
+        clientName: client.full_name,
       });
     }
 

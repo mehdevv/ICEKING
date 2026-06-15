@@ -53,6 +53,66 @@ export function mapClient(row: Record<string, unknown>) {
   };
 }
 
+export function mapClientCardReward(item: Record<string, unknown>) {
+  const r = toCamel(item);
+  return {
+    id: String(r.id ?? ""),
+    rewardDescription: String(r.rewardDescription ?? "Reward"),
+    createdAt: String(r.createdAt ?? new Date().toISOString()),
+    redeemedAt: (r.redeemedAt as string | null) ?? null,
+  };
+}
+
+export function mapClientCard(raw: Record<string, unknown>) {
+  const r = toCamel(raw);
+
+  let rewards = Array.isArray(r.rewards)
+    ? r.rewards
+        .map((item) => mapClientCardReward(item as Record<string, unknown>))
+        .filter((reward) => reward.id)
+    : [];
+
+  const pendingId = (r.pendingRewardId as string | null) ?? null;
+  const pendingDesc = (r.pendingRewardDescription as string | null) ?? null;
+
+  if (pendingId && !rewards.some((reward) => reward.id === pendingId)) {
+    rewards = [
+      {
+        id: pendingId,
+        rewardDescription: pendingDesc ?? "Reward",
+        createdAt: new Date().toISOString(),
+        redeemedAt: null,
+      },
+      ...rewards,
+    ];
+  }
+
+  return {
+    businessName: String(r.businessName ?? ""),
+    clientName: String(r.clientName ?? ""),
+    primaryColor: String(r.primaryColor ?? "#1A56DB"),
+    cardUrl: (r.cardUrl as string) ?? null,
+    cardTemplateUrl: (r.cardTemplateUrl as string) ?? null,
+    stampThreshold: Number(r.stampThreshold ?? 9),
+    currentCycleStamps: Number(r.currentCycleStamps ?? 0),
+    cardCode: String(r.cardCode ?? ""),
+    stampMilestones: parseStampMilestones(r.stampMilestones),
+    pendingRewardId: pendingId,
+    pendingRewardDescription: pendingDesc,
+    rewards,
+    recentScans: Array.isArray(r.recentScans)
+      ? (r.recentScans as Record<string, unknown>[]).map((scan) => {
+          const s = toCamel(scan);
+          return {
+            scannedAt: String(s.scannedAt ?? ""),
+            status: String(s.status ?? ""),
+            stampsAdded: Number(s.stampsAdded ?? 0),
+          };
+        })
+      : [],
+  };
+}
+
 export function mapProduct(row: Record<string, unknown>) {
   const r = toCamel(row);
   return {

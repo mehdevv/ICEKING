@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { usePurchaseScan, useConfirmPurchaseScan } from "@/api";
+import { usePurchaseScan, useConfirmPurchaseScan, useRedeemRewardScan } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { scanResultVariants, vibrate } from "@/lib/motion";
-import { extractQrToken } from "@/lib/supabase";
+import { parseScannedQr } from "@/lib/supabase";
 import { FRAUD_REASON_LABELS } from "@/api/fraud";
 import { CheckCircle, XCircle, Gift, ArrowLeft, Minus, Plus, ScanLine, CalendarClock, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
@@ -28,6 +28,13 @@ type ScanResult = {
 };
 
 type ProductQty = Record<string, number>;
+
+type RedeemResult = {
+  approved: boolean;
+  reason: string | null;
+  clientName: string | null;
+  rewardDescription: string;
+};
 
 function normalizeScanResult(raw: Record<string, unknown>): ScanResult {
   return {
@@ -58,16 +65,20 @@ export default function WorkerScan() {
   const { toast } = useToast();
   const purchaseScan = usePurchaseScan();
   const confirmScan = useConfirmPurchaseScan();
-  const [step, setStep] = useState<"scan" | "products" | "result">("scan");
+  const redeemRewardScan = useRedeemRewardScan();
+  const [step, setStep] = useState<"scan" | "products" | "result" | "redeem-result">("scan");
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [redeemResult, setRedeemResult] = useState<RedeemResult | null>(null);
   const [productQtys, setProductQtys] = useState<ProductQty>({});
   const [cameraStarting, setCameraStarting] = useState(false);
   const html5QrcodeRef = useRef<InstanceType<typeof import("html5-qrcode").Html5Qrcode> | null>(null);
   const processingRef = useRef(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mutateScanRef = useRef(purchaseScan.mutateAsync);
+  const mutateRedeemRef = useRef(redeemRewardScan.mutateAsync);
   const toastRef = useRef(toast);
   mutateScanRef.current = purchaseScan.mutateAsync;
+  mutateRedeemRef.current = redeemRewardScan.mutateAsync;
   toastRef.current = toast;
 
   const stopScanner = useCallback(async () => {
@@ -94,19 +105,22 @@ export default function WorkerScan() {
     await stopScanner();
     setStep("scan");
     setResult(null);
+    setRedeemResult(null);
     setProductQtys({});
     setCameraStarting(false);
   }, [stopScanner]);
 
   useEffect(() => {
-    if (step !== "result" || !result) return;
+    if (step !== "result" && step !== "redeem-result") return;
+    if (step === "result" && !result) return;
+    if (step === "redeem-result" && !redeemResult) return;
     resetTimerRef.current = setTimeout(() => {
       void handleReset();
     }, 3000);
     return () => {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     };
-  }, [step, result, handleReset]);
+  }, [step, result, redeemResult, handleReset]);
 
   useEffect(() => {
     if (step !== "scan") {
@@ -138,8 +152,26 @@ export default function WorkerScan() {
             try {
               await stopScanner();
 
+              const parsed = parseScannedQr(decodedText);
+
+              if (parsed.type === "reward") {
+                const redeemRes = await mutateRedeemRef.current({
+                  data: { rewardQrToken: `reward:${parsed.rewardId}` },
+                });
+                setRedeemResult({
+                  approved: redeemRes.approved,
+                  reason: redeemRes.reason,
+                  clientName: redeemRes.clientName,
+                  rewardDescription: redeemRes.rewardDescription,
+                });
+                setStep("redeem-result");
+                if (redeemRes.approved) vibrate([50, 30, 50]);
+                else vibrate([100, 50, 100]);
+                return;
+              }
+
               const scanResult = await mutateScanRef.current({
-                data: { clientQrToken: extractQrToken(decodedText) },
+                data: { clientQrToken: parsed.token },
               });
               const r = normalizeScanResult(scanResult as Record<string, unknown>);
               setResult(r);
@@ -216,7 +248,7 @@ export default function WorkerScan() {
           <Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="Back to worker home">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h2 className="text-xl font-bold">Scan Customer Card</h2>
+          <h2 className="text-xl font-bold">Scan QR Code</h2>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center gap-6">
@@ -239,7 +271,7 @@ export default function WorkerScan() {
             </div>
           </div>
           <p className="text-muted-foreground text-sm text-center">
-            Point the camera at the customer&apos;s loyalty card QR code
+            Point the camera at a loyalty card or reward QR code
           </p>
           <ScanLine className="h-5 w-5 text-primary animate-pulse" />
         </div>
@@ -371,6 +403,49 @@ export default function WorkerScan() {
               <p className="text-3xl font-bold mb-2">Blocked</p>
               <p className="text-xl">{result.clientName}</p>
               <p className="mt-4 text-lg font-medium px-4">{fraudLabel(result.reason)}</p>
+            </>
+          )}
+          <p className="mt-8 text-sm opacity-75">Returning to scanner…</p>
+          <Button variant="secondary" className="mt-4" onClick={() => void handleReset()}>
+            Scan Another
+          </Button>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  if (step === "redeem-result" && redeemResult) {
+    const isApproved = redeemResult.approved;
+    const isAlreadyRedeemed = !isApproved && redeemResult.reason === "already_redeemed";
+    const bgClass = isApproved ? "bg-emerald-600" : isAlreadyRedeemed ? "bg-orange-600" : "bg-destructive";
+
+    return (
+      <AnimatePresence>
+        <motion.div
+          className={`fixed inset-0 z-[60] flex flex-col items-center justify-center p-6 text-center text-white ${bgClass}`}
+          variants={scanResultVariants}
+          initial="initial"
+          animate="animate"
+        >
+          {isApproved ? (
+            <>
+              <Gift className="h-20 w-20 mb-4" />
+              <p className="text-3xl font-bold mb-2">Reward Redeemed!</p>
+              <p className="text-xl font-semibold">{redeemResult.clientName}</p>
+              <p className="mt-2 opacity-90 text-lg">{redeemResult.rewardDescription}</p>
+            </>
+          ) : isAlreadyRedeemed ? (
+            <>
+              <Gift className="h-20 w-20 mb-4 opacity-80" />
+              <p className="text-3xl font-bold mb-2">Already Redeemed</p>
+              <p className="text-xl font-semibold">{redeemResult.clientName}</p>
+              <p className="mt-2 opacity-90">{redeemResult.rewardDescription}</p>
+            </>
+          ) : (
+            <>
+              <XCircle className="h-20 w-20 mb-4" />
+              <p className="text-3xl font-bold mb-2">Redeem Failed</p>
+              <p className="text-lg opacity-90">{redeemResult.reason?.replace(/_/g, " ") ?? "Unknown error"}</p>
             </>
           )}
           <p className="mt-8 text-sm opacity-75">Returning to scanner…</p>

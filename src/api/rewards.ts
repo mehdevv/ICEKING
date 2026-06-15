@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, invokeFunction } from "@/lib/supabase";
 import type { RewardClaim } from "./types";
 
 export const getListRewardsQueryKey = (params?: Record<string, unknown>) =>
@@ -58,7 +58,7 @@ export function useRedeemReward() {
 
 export function useGetRewardClaim(token: string, options?: { query?: { enabled?: boolean } }) {
   return useQuery({
-    queryKey: ["reward-claim", token],
+    queryKey: ["reward-claim", "card", token],
     enabled: (options?.query?.enabled ?? true) && !!token,
     queryFn: async (): Promise<RewardClaim | null> => {
       const { data, error } = await supabase.rpc("get_reward_claim_by_token", {
@@ -66,6 +66,47 @@ export function useGetRewardClaim(token: string, options?: { query?: { enabled?:
       });
       if (error) throw error;
       return (data as RewardClaim | null) ?? null;
+    },
+  });
+}
+
+export function useGetRewardClaimById(
+  rewardId: string,
+  options?: { query?: { enabled?: boolean; pollWhilePending?: boolean } },
+) {
+  const pollWhilePending = options?.query?.pollWhilePending ?? true;
+
+  return useQuery({
+    queryKey: ["reward-claim", "id", rewardId],
+    enabled: (options?.query?.enabled ?? true) && !!rewardId,
+    queryFn: async (): Promise<RewardClaim | null> => {
+      const { data, error } = await supabase.rpc("get_reward_claim_by_id", {
+        p_reward_id: rewardId,
+      });
+      if (error) throw error;
+      return (data as RewardClaim | null) ?? null;
+    },
+    refetchInterval: (query) => {
+      if (!pollWhilePending) return false;
+      const data = query.state.data;
+      if (!data || data.redeemedAt) return false;
+      return 2000;
+    },
+  });
+}
+
+export function useRedeemRewardScan() {
+  return useMutation({
+    mutationFn: async ({ data }: { data: { rewardQrToken: string } }) => {
+      return invokeFunction<{
+        approved: boolean;
+        reason: string | null;
+        clientName: string | null;
+        rewardDescription: string;
+        redeemedAt?: string;
+      }>("redeem-reward", {
+        rewardQrToken: data.rewardQrToken,
+      });
     },
   });
 }

@@ -29,6 +29,7 @@ Example project: `https://oqcvdstwgzmhyqfelqzc.supabase.co`
 | create-worker | `{SUPABASE_URL}/functions/v1/create-worker` | **ON** | `supabase/functions/create-worker/index.ts` |
 | purchase-scan | `{SUPABASE_URL}/functions/v1/purchase-scan` | **ON** | `supabase/functions/purchase-scan/index.ts` |
 | confirm-purchase-scan | `{SUPABASE_URL}/functions/v1/confirm-purchase-scan` | **ON** | `supabase/functions/confirm-purchase-scan/index.ts` |
+| redeem-reward | `{SUPABASE_URL}/functions/v1/redeem-reward` | **ON** | `supabase/functions/redeem-reward/index.ts` |
 
 ### Deploy checklist (Supabase Dashboard)
 

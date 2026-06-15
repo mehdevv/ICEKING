@@ -5,17 +5,17 @@ import { tapScale, vibrate } from "@/lib/motion";
 import { motion } from "framer-motion";
 import { Check, Copy, Link2 } from "lucide-react";
 import { useClientI18n } from "@/hooks/use-client-i18n";
+import { cn } from "@/lib/utils";
 
 type CardLinkBarProps = {
   code: string;
   primaryColor?: string;
-  prominent?: boolean;
+  className?: string;
 };
 
-export default function CardLinkBar({ code, primaryColor = "#1A56DB", prominent }: CardLinkBarProps) {
+export default function CardLinkBar({ code, primaryColor = "#1A56DB", className }: CardLinkBarProps) {
   const { t } = useClientI18n();
   const fullUrl = cardPageUrl(code);
-  const shortUrl = fullUrl.replace(/^https?:\/\//, "");
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -37,55 +37,37 @@ export default function CardLinkBar({ code, primaryColor = "#1A56DB", prominent 
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`rounded-2xl border p-4 text-center ${
-        prominent
-          ? "bg-amber-50 border-amber-200 shadow-sm"
-          : "bg-white/90 border-border/60 shadow-sm"
-      }`}
-    >
-      {prominent && (
-        <p className="text-sm font-semibold text-amber-900 mb-3">{t("saveLinkProminent")}</p>
+    <div
+      className={cn(
+        "flex items-center gap-2.5 rounded-2xl border border-border/60 bg-white/95 backdrop-blur-md px-3 py-2 shadow-sm shrink-0",
+        className,
       )}
-
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
-        {t("cardNumber")}
-      </p>
+    >
       <p
-        className="text-2xl font-mono font-bold tracking-[0.25em] tabular-nums mb-3"
+        className="font-mono text-base font-bold tracking-wide tabular-nums"
         style={{ color: primaryColor }}
       >
         {formatCardCode(code)}
       </p>
 
-      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-4 min-w-0">
-        <Link2 className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="truncate font-mono">{shortUrl}</span>
-      </div>
-
       <motion.div {...tapScale()}>
         <Button
           type="button"
-          className="w-full h-12 rounded-xl font-semibold"
-          variant={copied ? "secondary" : "default"}
-          style={copied ? undefined : { backgroundColor: primaryColor }}
+          variant="outline"
+          className="h-10 min-w-10 shrink-0 rounded-xl px-2.5 gap-1"
           onClick={handleCopy}
+          aria-label={copied ? t("copied") : t("copyLink")}
         >
           {copied ? (
-            <>
-              <Check className="mr-2 h-4 w-4" />
-              {t("copied")}
-            </>
+            <Check className="h-4 w-4 text-emerald-600" />
           ) : (
             <>
-              <Copy className="mr-2 h-4 w-4" />
-              {t("copyLink")}
+              <Link2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+              <Copy className="h-3.5 w-3.5" aria-hidden />
             </>
           )}
         </Button>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
