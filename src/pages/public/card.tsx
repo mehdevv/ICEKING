@@ -3,6 +3,7 @@ import { useRoute, Link } from "wouter";
 import { useGetClientCard } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Download, Share2, CheckCircle2, Gift } from "lucide-react";
+import { getMilestoneAt, parseStampMilestones } from "@/lib/stamp-milestones";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QRCodeSVG } from "qrcode.react";
 import { motion } from "framer-motion";
@@ -50,6 +51,7 @@ export default function CardView() {
   };
 
   const stamps = Array.from({ length: card.stampThreshold });
+  const milestones = parseStampMilestones(card.stampMilestones);
   const bgImage = card.cardTemplateUrl || "/card-bg.png";
 
   return (
@@ -112,20 +114,39 @@ export default function CardView() {
             </div>
 
             <div className="grid grid-cols-5 gap-3">
-              {stamps.map((_, i) => (
-                <div
-                  key={i}
-                  className="aspect-square rounded-full flex items-center justify-center border-2 transition-all"
-                  style={{
-                    borderColor: i < card.currentCycleStamps ? card.primaryColor : "#E5E7EB",
-                    backgroundColor: i < card.currentCycleStamps ? `${card.primaryColor}20` : "transparent",
-                  }}
-                >
-                  {i < card.currentCycleStamps && (
-                    <CheckCircle2 className="w-6 h-6" style={{ color: card.primaryColor }} />
-                  )}
-                </div>
-              ))}
+              {stamps.map((_, i) => {
+                const position = i + 1;
+                const filled = i < card.currentCycleStamps;
+                const prize = getMilestoneAt(milestones, position);
+                return (
+                  <div key={i} className="flex flex-col items-center gap-1 min-h-[4.5rem]">
+                    <div
+                      className="w-full aspect-square rounded-full flex items-center justify-center border-2 transition-all"
+                      style={{
+                        borderColor: filled ? card.primaryColor : prize ? "#F59E0B" : "#E5E7EB",
+                        backgroundColor: filled
+                          ? `${card.primaryColor}20`
+                          : prize
+                            ? "#FEF3C7"
+                            : "transparent",
+                      }}
+                    >
+                      {filled ? (
+                        <CheckCircle2 className="w-6 h-6" style={{ color: card.primaryColor }} />
+                      ) : prize ? (
+                        <Gift className="w-5 h-5 text-amber-600" />
+                      ) : (
+                        <span className="text-xs font-semibold text-gray-400">{position}</span>
+                      )}
+                    </div>
+                    {prize && (
+                      <span className="text-[10px] text-center leading-tight font-semibold text-amber-800 line-clamp-2 w-full">
+                        {prize.label}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <p className="text-center text-sm text-gray-500 mt-6">

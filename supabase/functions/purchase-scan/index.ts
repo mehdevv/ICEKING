@@ -26,6 +26,45 @@ function extractToken(raw: string): string {
   }
 }
 
+type StampMilestone = { position: number; label: string };
+
+function parseMilestones(raw: unknown): StampMilestone[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (m): m is StampMilestone =>
+        m &&
+        typeof m.position === "number" &&
+        typeof m.label === "string" &&
+        m.label.trim().length > 0,
+    )
+    .map((m) => ({ position: Math.floor(m.position), label: m.label.trim() }));
+}
+
+function resolveStampReward(
+  newCycleStamps: number,
+  threshold: number,
+  milestones: StampMilestone[],
+  fallbackReward: string,
+) {
+  const milestone = milestones.find((m) => m.position === newCycleStamps);
+  if (milestone) {
+    return {
+      rewardTriggered: true,
+      rewardDescription: milestone.label,
+      finalCycleStamps: newCycleStamps >= threshold ? 0 : newCycleStamps,
+    };
+  }
+  if (newCycleStamps >= threshold) {
+    return {
+      rewardTriggered: true,
+      rewardDescription: fallbackReward || "Loyalty reward",
+      finalCycleStamps: 0,
+    };
+  }
+  return { rewardTriggered: false, rewardDescription: null, finalCycleStamps: newCycleStamps };
+}
+
 function blockedResponse(
   reason: string,
   client: { id: string; full_name: string; current_cycle_stamps: number },
@@ -223,16 +262,14 @@ Deno.serve(async (req) => {
     }
 
     const threshold = settings?.stamp_threshold ?? 9;
+    const milestones = parseMilestones(settings?.stamp_milestones);
     const newCycleStamps = client.current_cycle_stamps + 1;
-    let rewardTriggered = false;
-    let rewardDescription: string | null = null;
-    let finalCycleStamps = newCycleStamps;
-
-    if (newCycleStamps >= threshold) {
-      rewardTriggered = true;
-      rewardDescription = settings?.reward_value || "Loyalty reward";
-      finalCycleStamps = 0;
-    }
+    const outcome = resolveStampReward(
+      newCycleStamps,
+      threshold,
+      milestones,
+      settings?.reward_value || "Loyalty reward",
+    );
 
     const { data: scan } = await admin
       .from("scan_logs")
@@ -242,7 +279,7 @@ Deno.serve(async (req) => {
         scan_type: "purchase",
         status: "approved",
         stamps_added: 1,
-        reward_triggered: rewardTriggered,
+        reward_triggered: outcome.rewardTriggered,
       })
       .select("id")
       .single();
@@ -250,20 +287,20 @@ Deno.serve(async (req) => {
     await admin
       .from("clients")
       .update({
-        current_cycle_stamps: finalCycleStamps,
+        current_cycle_stamps: outcome.finalCycleStamps,
         total_stamps: client.total_stamps + 1,
         last_scan_at: new Date().toISOString(),
-        total_rewards_earned: rewardTriggered
+        total_rewards_earned: outcome.rewardTriggered
           ? client.total_rewards_earned + 1
           : client.total_rewards_earned,
       })
       .eq("id", client.id);
 
-    if (rewardTriggered && scan) {
+    if (outcome.rewardTriggered && scan) {
       await admin.from("rewards").insert({
         client_id: client.id,
         scan_log_id: scan.id,
-        reward_description: rewardDescription!,
+        reward_description: outcome.rewardDescription!,
       });
     }
 
@@ -271,10 +308,10 @@ Deno.serve(async (req) => {
       approved: true,
       reason: null,
       stampsAdded: 1,
-      currentStamps: finalCycleStamps,
+      currentStamps: outcome.finalCycleStamps,
       stampThreshold: threshold,
-      rewardTriggered,
-      rewardDescription,
+      rewardTriggered: outcome.rewardTriggered,
+      rewardDescription: outcome.rewardDescription,
       needsProducts: false,
       clientName: client.full_name,
     });

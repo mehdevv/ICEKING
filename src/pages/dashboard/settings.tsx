@@ -15,6 +15,9 @@ import { Save, CheckCircle, AlertCircle, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { appLink } from "@/lib/links";
 import SettingsLinks from "./settings-links";
+import StampMilestonesEditor from "@/components/fidelity/stamp-milestones-editor";
+import type { StampMilestone } from "@/lib/stamp-milestones";
+import { clampMilestonesToThreshold } from "@/lib/stamp-milestones";
 
 export default function Settings() {
   const { data: settings, isLoading } = useGetSettings();
@@ -23,13 +26,27 @@ export default function Settings() {
   const queryClient = useQueryClient();
 
   const [general, setGeneral] = useState({ businessName: "", logoUrl: "", cardTemplateUrl: "", currency: "DZD", timezone: "Africa/Algiers", primaryColor: "#1A56DB", secondaryColor: "#0E9F6E" });
-  const [fidelity, setFidelity] = useState({ stampThreshold: 9, maxScansPerDay: 2, rewardType: "free_product", rewardValue: "", trackProducts: true });
+  const [fidelity, setFidelity] = useState({
+    stampThreshold: 9,
+    maxScansPerDay: 2,
+    rewardType: "free_product",
+    rewardValue: "",
+    stampMilestones: [] as StampMilestone[],
+    trackProducts: true,
+  });
   const [integrations, setIntegrations] = useState({ whatsappToken: "", whatsappPhoneId: "", emailSender: "" });
 
   useEffect(() => {
     if (settings) {
       setGeneral({ businessName: settings.businessName ?? "", logoUrl: settings.logoUrl ?? "", cardTemplateUrl: settings.cardTemplateUrl ?? "", currency: settings.currency ?? "DZD", timezone: settings.timezone ?? "Africa/Algiers", primaryColor: settings.primaryColor ?? "#1A56DB", secondaryColor: settings.secondaryColor ?? "#0E9F6E" });
-      setFidelity({ stampThreshold: settings.stampThreshold ?? 9, maxScansPerDay: settings.maxScansPerDay ?? 2, rewardType: settings.rewardType ?? "free_product", rewardValue: settings.rewardValue ?? "", trackProducts: settings.trackProducts ?? true });
+      setFidelity({
+        stampThreshold: settings.stampThreshold ?? 9,
+        maxScansPerDay: settings.maxScansPerDay ?? 2,
+        rewardType: settings.rewardType ?? "free_product",
+        rewardValue: settings.rewardValue ?? "",
+        stampMilestones: settings.stampMilestones ?? [],
+        trackProducts: settings.trackProducts ?? true,
+      });
     }
   }, [settings]);
 
@@ -115,24 +132,37 @@ export default function Settings() {
             <CardContent className="space-y-6">
               <div>
                 <Label>Stamp Threshold (current: {fidelity.stampThreshold})</Label>
-                <Slider className="mt-3" min={3} max={20} step={1} value={[fidelity.stampThreshold]} onValueChange={([v]) => setFidelity(f => ({ ...f, stampThreshold: v }))} />
-                <p className="text-xs text-muted-foreground mt-1">Customers need {fidelity.stampThreshold} stamps to earn a reward</p>
+                <Slider
+                  className="mt-3"
+                  min={3}
+                  max={20}
+                  step={1}
+                  value={[fidelity.stampThreshold]}
+                  onValueChange={([v]) =>
+                    setFidelity((f) => ({
+                      ...f,
+                      stampThreshold: v,
+                      stampMilestones: clampMilestonesToThreshold(f.stampMilestones, v),
+                    }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Total stamps on each customer&apos;s card (e.g. 9 stamps per cycle)
+                </p>
               </div>
               <div>
                 <Label>Max Scans Per Day (current: {fidelity.maxScansPerDay})</Label>
                 <Slider className="mt-3" min={1} max={10} step={1} value={[fidelity.maxScansPerDay]} onValueChange={([v]) => setFidelity(f => ({ ...f, maxScansPerDay: v }))} />
               </div>
-              <div><Label>Reward Type</Label>
-                <Select value={fidelity.rewardType} onValueChange={v => setFidelity(f => ({ ...f, rewardType: v }))}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="free_product">Free Product</SelectItem>
-                    <SelectItem value="discount">Discount</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div><Label>Reward Value</Label><Input className="mt-1" value={fidelity.rewardValue} onChange={e => setFidelity(f => ({ ...f, rewardValue: e.target.value }))} placeholder="e.g. Free Ice Cream, 20%" /></div>
+              <div><Label>Default final prize (fallback)</Label><Input className="mt-1" value={fidelity.rewardValue} onChange={e => setFidelity(f => ({ ...f, rewardValue: e.target.value }))} placeholder="Used only if the last stamp has no prize set" /></div>
+
+              <StampMilestonesEditor
+                stampThreshold={fidelity.stampThreshold}
+                milestones={fidelity.stampMilestones}
+                primaryColor={general.primaryColor}
+                onChange={(stampMilestones) => setFidelity((f) => ({ ...f, stampMilestones }))}
+              />
+
               <div className="flex items-center gap-3">
                 <Switch checked={fidelity.trackProducts} onCheckedChange={v => setFidelity(f => ({ ...f, trackProducts: v }))} />
                 <div>
@@ -140,7 +170,19 @@ export default function Settings() {
                   <p className="text-xs text-muted-foreground">Workers select products when scanning</p>
                 </div>
               </div>
-              <Button onClick={() => handleSave(fidelity)} disabled={updateSettings.isPending}>
+              <Button
+                onClick={() =>
+                  handleSave({
+                    stampThreshold: fidelity.stampThreshold,
+                    maxScansPerDay: fidelity.maxScansPerDay,
+                    rewardType: fidelity.rewardType,
+                    rewardValue: fidelity.rewardValue,
+                    stampMilestones: fidelity.stampMilestones.filter((m) => m.label.trim()),
+                    trackProducts: fidelity.trackProducts,
+                  })
+                }
+                disabled={updateSettings.isPending}
+              >
                 <Save className="h-4 w-4 mr-2" /> Save Fidelity Settings
               </Button>
             </CardContent>

@@ -22,6 +22,7 @@ export interface ShopSettings {
   maxScansPerDay: number;
   rewardType: string;
   rewardValue: string | null;
+  stampMilestones: { position: number; label: string }[];
   trackProducts: boolean;
   whatsappToken?: string | null;
   whatsappPhoneId?: string | null;
@@ -92,6 +93,7 @@ export interface ClientCard {
   stampThreshold: number;
   currentCycleStamps: number;
   fidelityQrToken: string;
+  stampMilestones?: { position: number; label: string }[];
   pendingRewardId?: string | null;
   pendingRewardDescription?: string | null;
   recentScans?: { scannedAt: string; status: string; stampsAdded: number }[];

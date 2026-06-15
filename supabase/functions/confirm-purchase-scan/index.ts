@@ -16,6 +16,45 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+type StampMilestone = { position: number; label: string };
+
+function parseMilestones(raw: unknown): StampMilestone[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (m): m is StampMilestone =>
+        m &&
+        typeof m.position === "number" &&
+        typeof m.label === "string" &&
+        m.label.trim().length > 0,
+    )
+    .map((m) => ({ position: Math.floor(m.position), label: m.label.trim() }));
+}
+
+function resolveStampReward(
+  newCycleStamps: number,
+  threshold: number,
+  milestones: StampMilestone[],
+  fallbackReward: string,
+) {
+  const milestone = milestones.find((m) => m.position === newCycleStamps);
+  if (milestone) {
+    return {
+      rewardTriggered: true,
+      rewardDescription: milestone.label,
+      finalCycleStamps: newCycleStamps >= threshold ? 0 : newCycleStamps,
+    };
+  }
+  if (newCycleStamps >= threshold) {
+    return {
+      rewardTriggered: true,
+      rewardDescription: fallbackReward || "Loyalty reward",
+      finalCycleStamps: 0,
+    };
+  }
+  return { rewardTriggered: false, rewardDescription: null, finalCycleStamps: newCycleStamps };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
@@ -56,6 +95,7 @@ Deno.serve(async (req) => {
     const client = scanRow.clients;
     const { data: settings } = await admin.from("shop_settings").select("*").limit(1).single();
     const threshold = settings?.stamp_threshold ?? 9;
+    const milestones = parseMilestones(settings?.stamp_milestones);
 
     for (const item of products ?? []) {
       await admin.from("scan_products").insert({
@@ -66,42 +106,39 @@ Deno.serve(async (req) => {
     }
 
     const newCycleStamps = (client.current_cycle_stamps as number) + 1;
-    let rewardTriggered = false;
-    let rewardDescription: string | null = null;
-    let finalCycleStamps = newCycleStamps;
-
-    if (newCycleStamps >= threshold) {
-      rewardTriggered = true;
-      rewardDescription = settings?.reward_value || "Loyalty reward";
-      finalCycleStamps = 0;
-    }
+    const outcome = resolveStampReward(
+      newCycleStamps,
+      threshold,
+      milestones,
+      settings?.reward_value || "Loyalty reward",
+    );
 
     await admin
       .from("scan_logs")
       .update({
         pending_products: false,
         stamps_added: 1,
-        reward_triggered: rewardTriggered,
+        reward_triggered: outcome.rewardTriggered,
       })
       .eq("id", pendingScanId);
 
     await admin
       .from("clients")
       .update({
-        current_cycle_stamps: finalCycleStamps,
+        current_cycle_stamps: outcome.finalCycleStamps,
         total_stamps: (client.total_stamps as number) + 1,
         last_scan_at: new Date().toISOString(),
-        total_rewards_earned: rewardTriggered
+        total_rewards_earned: outcome.rewardTriggered
           ? (client.total_rewards_earned as number) + 1
           : client.total_rewards_earned,
       })
       .eq("id", client.id);
 
-    if (rewardTriggered) {
+    if (outcome.rewardTriggered) {
       await admin.from("rewards").insert({
         client_id: client.id,
         scan_log_id: pendingScanId,
-        reward_description: rewardDescription!,
+        reward_description: outcome.rewardDescription!,
       });
     }
 
@@ -109,10 +146,10 @@ Deno.serve(async (req) => {
       approved: true,
       reason: null,
       stampsAdded: 1,
-      currentStamps: finalCycleStamps,
+      currentStamps: outcome.finalCycleStamps,
       stampThreshold: threshold,
-      rewardTriggered,
-      rewardDescription,
+      rewardTriggered: outcome.rewardTriggered,
+      rewardDescription: outcome.rewardDescription,
       needsProducts: false,
       clientName: client.full_name,
     });

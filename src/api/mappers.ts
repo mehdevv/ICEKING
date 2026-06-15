@@ -7,6 +7,8 @@ function toCamel<T extends Record<string, unknown>>(row: T): Record<string, unkn
   return out;
 }
 
+import { parseStampMilestones } from "@/lib/stamp-milestones";
+
 export function mapSettings(row: Record<string, unknown>) {
   const r = toCamel(row);
   return {
@@ -22,6 +24,7 @@ export function mapSettings(row: Record<string, unknown>) {
     maxScansPerDay: r.maxScansPerDay as number,
     rewardType: r.rewardType as string,
     rewardValue: (r.rewardValue as string) ?? null,
+    stampMilestones: parseStampMilestones(r.stampMilestones),
     trackProducts: r.trackProducts as boolean,
     whatsappToken: r.whatsappToken as string | null,
     whatsappPhoneId: r.whatsappPhoneId as string | null,
