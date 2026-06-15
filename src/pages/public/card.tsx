@@ -9,9 +9,11 @@ import { motion } from "framer-motion";
 import { fadeUp, scaleIn, tapScale, vibrate, cardReveal, headerStagger, headerItem } from "@/lib/motion";
 import ClientShell, { ClientLoading } from "@/components/client/client-shell";
 import Mascot from "@/components/brand/mascot";
-import ClientStampGrid, { nextMilestoneHint } from "@/components/client/stamp-grid";
+import ClientStampGrid from "@/components/client/stamp-grid";
 import CardLinkBar from "@/components/client/card-link-bar";
 import { cardPageUrl, normalizeCardCode } from "@/lib/card-code";
+import { nextMilestoneHintText } from "@/lib/client-i18n";
+import { useClientI18n } from "@/hooks/use-client-i18n";
 import { useEffect, useMemo } from "react";
 
 const FIDELITY_CARD_BG = "/fidelity-card-bg.png";
@@ -20,6 +22,8 @@ export default function CardView() {
   const [, params] = useRoute("/card/:code");
   const code = params?.code ? normalizeCardCode(params.code) : "";
   const cardRef = useRef<HTMLDivElement>(null);
+
+  const { t, lang } = useClientI18n();
 
   const { data: card, isLoading, error } = useGetClientCard(code, {
     query: { enabled: !!code },
@@ -38,7 +42,7 @@ export default function CardView() {
     return (
       <ClientShell>
         <div className="flex min-h-[100dvh] items-center justify-center p-4 text-center text-muted-foreground">
-          Invalid card link
+          {t("invalidCardLink")}
         </div>
       </ClientShell>
     );
@@ -56,12 +60,10 @@ export default function CardView() {
           animate="animate"
         >
           <div className="text-center p-8 bg-white/90 backdrop-blur rounded-3xl shadow-lg max-w-sm w-full">
-            <h2 className="text-xl font-bold mb-2">Card not found</h2>
-            <p className="text-muted-foreground text-sm">
-              This loyalty card doesn&apos;t exist or was removed.
-            </p>
+            <h2 className="text-xl font-bold mb-2">{t("cardNotFound")}</h2>
+            <p className="text-muted-foreground text-sm">{t("cardNotFoundDesc")}</p>
             <Button className="mt-6 w-full rounded-xl" variant="outline" asChild>
-              <Link href="/client">Get a new card</Link>
+              <Link href="/client">{t("getNewCard")}</Link>
             </Button>
           </div>
         </motion.div>
@@ -71,7 +73,8 @@ export default function CardView() {
 
   const milestones = parseStampMilestones(card.stampMilestones);
   const progress = Math.min(100, (card.currentCycleStamps / card.stampThreshold) * 100);
-  const hint = nextMilestoneHint(card.currentCycleStamps, card.stampThreshold, milestones);
+  const hint = nextMilestoneHintText(card.currentCycleStamps, card.stampThreshold, milestones, t);
+  const dateLocale = lang === "fr" ? "fr-FR" : "en-US";
 
   const handleDownload = async () => {
     if (!cardRef.current) return;
@@ -87,7 +90,7 @@ export default function CardView() {
   const handleShare = async () => {
     if (navigator.share) {
       await navigator.share({
-        title: `${card.businessName} Loyalty Card`,
+        title: t("loyaltyCardTitle", { business: card.businessName }),
         url: window.location.href,
       });
     }
@@ -129,10 +132,10 @@ export default function CardView() {
                 variant="outline"
                 className="h-8 px-2.5 rounded-lg text-xs bg-white/90 shadow-sm border-gray-200"
                 onClick={handleShare}
-                aria-label="Share card"
+                aria-label={t("shareCard")}
               >
                 <Share2 className="h-3.5 w-3.5" />
-                <span className="ml-1">Share</span>
+                <span className="ml-1">{t("share")}</span>
               </Button>
             </motion.div>
             <motion.div {...tapScale()}>
@@ -142,10 +145,10 @@ export default function CardView() {
                 className="h-8 px-2.5 rounded-lg text-xs shadow-sm"
                 onClick={handleDownload}
                 style={{ backgroundColor: card.primaryColor }}
-                aria-label="Save card"
+                aria-label={t("saveCard")}
               >
                 <Download className="h-3.5 w-3.5" />
-                <span className="ml-1">Save</span>
+                <span className="ml-1">{t("save")}</span>
               </Button>
             </motion.div>
           </motion.div>
@@ -161,7 +164,7 @@ export default function CardView() {
                 <Gift className="h-6 w-6 text-white" />
               </div>
               <div className="flex-1 text-left min-w-0">
-                <p className="font-bold text-amber-900">Reward ready!</p>
+                <p className="font-bold text-amber-900">{t("rewardReady")}</p>
                 <p className="text-sm text-amber-800 truncate">{card.pendingRewardDescription}</p>
               </div>
               <ChevronRight className="h-5 w-5 text-amber-600 shrink-0" />
@@ -199,7 +202,7 @@ export default function CardView() {
 
             <div className="relative mx-4 mb-4 rounded-2xl bg-white/95 backdrop-blur-md border border-white/80 shadow-sm px-4 py-4">
               <div className="flex justify-between items-end mb-2">
-                <span className="text-sm font-semibold text-gray-700">Progress</span>
+                <span className="text-sm font-semibold text-gray-700">{t("progress")}</span>
                 <span className="text-lg font-bold tabular-nums" style={{ color: card.primaryColor }}>
                   {card.currentCycleStamps}/{card.stampThreshold}
                 </span>
@@ -233,9 +236,7 @@ export default function CardView() {
                 primaryColor={card.primaryColor}
               />
 
-              <p className="text-center text-xs font-medium text-gray-600 mt-5">
-                Show this QR at the counter to collect stamps
-              </p>
+              <p className="text-center text-xs font-medium text-gray-600 mt-5">{t("showQrHint")}</p>
             </div>
           </motion.div>
 
@@ -250,7 +251,7 @@ export default function CardView() {
           {card.recentScans && card.recentScans.length > 0 && (
             <motion.div className="mt-6" variants={fadeUp}>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">
-                Recent visits
+                {t("recentVisits")}
               </h3>
               <div className="space-y-2">
                 {card.recentScans.map((scan, i) => (
@@ -262,7 +263,7 @@ export default function CardView() {
                     className="flex justify-between text-sm bg-white/80 backdrop-blur rounded-xl px-4 py-3 shadow-sm border border-white/60"
                   >
                     <span className="text-muted-foreground">
-                      {new Date(scan.scannedAt).toLocaleDateString(undefined, {
+                      {new Date(scan.scannedAt).toLocaleDateString(dateLocale, {
                         month: "short",
                         day: "numeric",
                       })}
@@ -272,7 +273,7 @@ export default function CardView() {
                         scan.status === "approved" ? "font-semibold text-emerald-600" : "text-destructive"
                       }
                     >
-                      {scan.status === "approved" ? `+${scan.stampsAdded}` : "Blocked"}
+                      {scan.status === "approved" ? `+${scan.stampsAdded}` : t("blocked")}
                     </span>
                   </motion.div>
                 ))}

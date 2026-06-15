@@ -31,6 +31,7 @@ export function mapSettings(row: Record<string, unknown>) {
     emailSender: r.emailSender as string | null,
     whatsappConfigured: Boolean(r.whatsappToken && r.whatsappPhoneId),
     emailConfigured: Boolean(r.emailSender),
+    clientLanguage: r.clientLanguage === "en" ? "en" : "fr",
   };
 }
 

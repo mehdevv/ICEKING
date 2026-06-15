@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import Mascot from "@/components/brand/mascot";
 import { fadeUp } from "@/lib/motion";
+import { useClientI18n } from "@/hooks/use-client-i18n";
 
 type ClientShellProps = {
   children: React.ReactNode;
@@ -58,12 +59,14 @@ export function ClientCard({
   );
 }
 
-export function ClientLoading({ label = "Loading your card…" }: { label?: string }) {
+export function ClientLoading({ label }: { label?: string }) {
+  const { t } = useClientI18n();
+  const text = label ?? t("loadingCard");
   return (
     <ClientShell>
       <div className="flex min-h-[100dvh] flex-col items-center justify-center p-6 max-w-md mx-auto text-center">
         <Mascot role="client" size="lg" float />
-        <p className="text-sm text-muted-foreground mt-6 animate-pulse">{label}</p>
+        <p className="text-sm text-muted-foreground mt-6 animate-pulse">{text}</p>
       </div>
     </ClientShell>
   );

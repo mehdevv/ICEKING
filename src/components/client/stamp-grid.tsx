@@ -139,16 +139,3 @@ export default function ClientStampGrid({
     </motion.div>
   );
 }
-
-export function nextMilestoneHint(
-  currentStamps: number,
-  stampThreshold: number,
-  milestones: StampMilestone[],
-): string | null {
-  const upcoming = milestones
-    .filter((m) => m.position > currentStamps && m.position <= stampThreshold)
-    .sort((a, b) => a.position - b.position)[0];
-  if (!upcoming) return null;
-  const remaining = upcoming.position - currentStamps;
-  return `${remaining} more stamp${remaining === 1 ? "" : "s"} until: ${upcoming.label}`;
-}

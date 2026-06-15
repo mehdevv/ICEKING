@@ -4,6 +4,7 @@ import { cardPageUrl, formatCardCode } from "@/lib/card-code";
 import { tapScale, vibrate } from "@/lib/motion";
 import { motion } from "framer-motion";
 import { Check, Copy, Link2 } from "lucide-react";
+import { useClientI18n } from "@/hooks/use-client-i18n";
 
 type CardLinkBarProps = {
   code: string;
@@ -12,6 +13,7 @@ type CardLinkBarProps = {
 };
 
 export default function CardLinkBar({ code, primaryColor = "#1A56DB", prominent }: CardLinkBarProps) {
+  const { t } = useClientI18n();
   const fullUrl = cardPageUrl(code);
   const shortUrl = fullUrl.replace(/^https?:\/\//, "");
   const [copied, setCopied] = useState(false);
@@ -23,7 +25,6 @@ export default function CardLinkBar({ code, primaryColor = "#1A56DB", prominent 
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
     } catch {
-      // Fallback for older browsers
       const input = document.createElement("input");
       input.value = fullUrl;
       document.body.appendChild(input);
@@ -46,13 +47,11 @@ export default function CardLinkBar({ code, primaryColor = "#1A56DB", prominent 
       }`}
     >
       {prominent && (
-        <p className="text-sm font-semibold text-amber-900 mb-3">
-          Save this link — you&apos;ll need it to open your card again
-        </p>
+        <p className="text-sm font-semibold text-amber-900 mb-3">{t("saveLinkProminent")}</p>
       )}
 
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
-        Card number
+        {t("cardNumber")}
       </p>
       <p
         className="text-2xl font-mono font-bold tracking-[0.25em] tabular-nums mb-3"
@@ -77,12 +76,12 @@ export default function CardLinkBar({ code, primaryColor = "#1A56DB", prominent 
           {copied ? (
             <>
               <Check className="mr-2 h-4 w-4" />
-              Copied!
+              {t("copied")}
             </>
           ) : (
             <>
               <Copy className="mr-2 h-4 w-4" />
-              Copy link
+              {t("copyLink")}
             </>
           )}
         </Button>

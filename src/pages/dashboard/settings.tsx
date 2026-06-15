@@ -25,7 +25,7 @@ export default function Settings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [general, setGeneral] = useState({ businessName: "", logoUrl: "", cardTemplateUrl: "", currency: "DZD", timezone: "Africa/Algiers", primaryColor: "#1A56DB", secondaryColor: "#0E9F6E" });
+  const [general, setGeneral] = useState({ businessName: "", logoUrl: "", cardTemplateUrl: "", currency: "DZD", timezone: "Africa/Algiers", primaryColor: "#1A56DB", secondaryColor: "#0E9F6E", clientLanguage: "fr" as "fr" | "en" });
   const [fidelity, setFidelity] = useState({
     stampThreshold: 9,
     maxScansPerDay: 2,
@@ -38,7 +38,7 @@ export default function Settings() {
 
   useEffect(() => {
     if (settings) {
-      setGeneral({ businessName: settings.businessName ?? "", logoUrl: settings.logoUrl ?? "", cardTemplateUrl: settings.cardTemplateUrl ?? "", currency: settings.currency ?? "DZD", timezone: settings.timezone ?? "Africa/Algiers", primaryColor: settings.primaryColor ?? "#1A56DB", secondaryColor: settings.secondaryColor ?? "#0E9F6E" });
+      setGeneral({ businessName: settings.businessName ?? "", logoUrl: settings.logoUrl ?? "", cardTemplateUrl: settings.cardTemplateUrl ?? "", currency: settings.currency ?? "DZD", timezone: settings.timezone ?? "Africa/Algiers", primaryColor: settings.primaryColor ?? "#1A56DB", secondaryColor: settings.secondaryColor ?? "#0E9F6E", clientLanguage: settings.clientLanguage ?? "fr" });
       setFidelity({
         stampThreshold: settings.stampThreshold ?? 9,
         maxScansPerDay: settings.maxScansPerDay ?? 2,
@@ -94,6 +94,22 @@ export default function Settings() {
                     <SelectContent><SelectItem value="Africa/Algiers">Africa/Algiers</SelectItem><SelectItem value="Europe/Paris">Europe/Paris</SelectItem><SelectItem value="UTC">UTC</SelectItem></SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div>
+                <Label>Client app language</Label>
+                <Select
+                  value={general.clientLanguage}
+                  onValueChange={(v: "fr" | "en") => setGeneral(g => ({ ...g, clientLanguage: v }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fr">Français</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Language shown to customers on enrolment, loyalty card, and reward pages.
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><Label>Primary Color</Label><Input type="color" className="mt-1 h-10 px-2 cursor-pointer" value={general.primaryColor} onChange={e => setGeneral(g => ({ ...g, primaryColor: e.target.value }))} /></div>

@@ -13,19 +13,25 @@ import ClientShell, { ClientCard, ClientLoading } from "@/components/client/clie
 import Mascot from "@/components/brand/mascot";
 import { isCardCode, normalizeCardCode } from "@/lib/card-code";
 import { ArrowRight, Hash, Loader2, Smartphone, Sparkles } from "lucide-react";
-import { useState } from "react";
-
-const createSchema = z.object({
-  fullName: z.string().min(2, "Name must be at least 2 characters."),
-  phone: z.string().min(8, "Phone number is required."),
-});
+import { useMemo, useState } from "react";
+import { useClientI18n } from "@/hooks/use-client-i18n";
 
 export default function ClientEnrol() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { data: settings, isLoading } = useGetSettings();
+  const { t, isLoading: langLoading } = useClientI18n();
+  const { data: settings, isLoading: settingsLoading } = useGetSettings();
   const enrolClient = useEnrolClient();
   const [lookupCode, setLookupCode] = useState("");
+
+  const createSchema = useMemo(
+    () =>
+      z.object({
+        fullName: z.string().min(2, t("nameMinLength")),
+        phone: z.string().min(8, t("phoneRequired")),
+      }),
+    [t],
+  );
 
   const form = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
@@ -41,12 +47,12 @@ export default function ClientEnrol() {
         data: { fullName: values.fullName, phone: values.phone },
       });
       if (response.existing) {
-        toast({ title: "Welcome back!", description: "Opening your existing card." });
+        toast({ title: t("welcomeBack"), description: t("openingExisting") });
       }
       setLocation(`~/card/${response.cardCode}?new=1`);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Something went wrong";
-      toast({ title: "Could not create card", description: message, variant: "destructive" });
+      const message = error instanceof Error ? error.message : t("loading");
+      toast({ title: t("couldNotCreate"), description: message, variant: "destructive" });
     }
   };
 
@@ -54,8 +60,8 @@ export default function ClientEnrol() {
     const code = normalizeCardCode(lookupCode);
     if (!isCardCode(code)) {
       toast({
-        title: "Invalid card number",
-        description: "Enter your 6-digit card number.",
+        title: t("invalidCardNumber"),
+        description: t("enterSixDigits"),
         variant: "destructive",
       });
       return;
@@ -63,7 +69,7 @@ export default function ClientEnrol() {
     setLocation(`~/card/${code}`);
   };
 
-  if (isLoading) return <ClientLoading label="Loading…" />;
+  if (langLoading || settingsLoading) return <ClientLoading />;
 
   return (
     <ClientShell primaryColor={primary} secondaryColor={secondary}>
@@ -74,14 +80,12 @@ export default function ClientEnrol() {
             <h1 className="text-xl font-bold tracking-tight">{settings?.businessName || "LoyalQR"}</h1>
             <p className="text-sm text-muted-foreground mt-1 flex items-center justify-center gap-1">
               <Sparkles className="h-3.5 w-3.5" />
-              Get your free loyalty card
+              {t("getFreeCard")}
             </p>
           </div>
 
           <div className="px-4 py-6">
-            <p className="text-sm text-muted-foreground text-center mb-5">
-              Fill in your details — your card opens instantly with a short link to save.
-            </p>
+            <p className="text-sm text-muted-foreground text-center mb-5">{t("enrolDesc")}</p>
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onCreate)} className="space-y-4">
@@ -90,10 +94,10 @@ export default function ClientEnrol() {
                   name="fullName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Full name</FormLabel>
+                      <FormLabel>{t("fullName")}</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Your name"
+                          placeholder={t("yourName")}
                           autoComplete="name"
                           className="h-12 rounded-xl text-base"
                           {...field}
@@ -108,7 +112,7 @@ export default function ClientEnrol() {
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone</FormLabel>
+                      <FormLabel>{t("phone")}</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -116,7 +120,7 @@ export default function ClientEnrol() {
                             type="tel"
                             inputMode="tel"
                             autoComplete="tel"
-                            placeholder="0555 123 456"
+                            placeholder={t("phonePlaceholder")}
                             className="h-12 pl-10 rounded-xl text-base"
                             {...field}
                           />
@@ -136,11 +140,11 @@ export default function ClientEnrol() {
                     {enrolClient.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Creating your card…
+                        {t("creatingCard")}
                       </>
                     ) : (
                       <>
-                        Create My Card
+                        {t("createMyCard")}
                         <ArrowRight className="ml-2 h-5 w-5" />
                       </>
                     )}
@@ -154,7 +158,7 @@ export default function ClientEnrol() {
                 <span className="w-full border-t border-border/60" />
               </div>
               <p className="relative flex justify-center text-xs uppercase tracking-wide text-muted-foreground">
-                <span className="bg-white/95 px-3">Already have a card?</span>
+                <span className="bg-white/95 px-3">{t("alreadyHaveCard")}</span>
               </p>
             </div>
 
@@ -165,11 +169,12 @@ export default function ClientEnrol() {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   maxLength={6}
-                  placeholder="6-digit number"
+                  placeholder={t("sixDigitPlaceholder")}
                   value={lookupCode}
                   onChange={(e) => setLookupCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   className="h-12 pl-10 rounded-xl text-base font-mono tracking-widest"
                   onKeyDown={(e) => e.key === "Enter" && openExistingCard()}
+                  aria-label={t("sixDigitPlaceholder")}
                 />
               </div>
               <Button
@@ -178,7 +183,7 @@ export default function ClientEnrol() {
                 className="h-12 rounded-xl px-5 shrink-0"
                 onClick={openExistingCard}
               >
-                Open
+                {t("open")}
               </Button>
             </div>
           </div>

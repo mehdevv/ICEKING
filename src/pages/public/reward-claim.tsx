@@ -8,29 +8,31 @@ import ClientShell, { ClientCard, ClientLoading } from "@/components/client/clie
 import Mascot from "@/components/brand/mascot";
 import { ArrowLeft, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-
 import { normalizeCardCode } from "@/lib/card-code";
+import { useClientI18n } from "@/hooks/use-client-i18n";
 
 export default function RewardClaim() {
   const [, params] = useRoute("/rewards/:code");
   const code = params?.code ? normalizeCardCode(params.code) : "";
+  const { t, lang } = useClientI18n();
 
   const { data: reward, isLoading, error } = useGetRewardClaim(code, {
     query: { enabled: !!code },
   });
   const [, navigate] = useLocation();
+  const dateLocale = lang === "fr" ? "fr-FR" : "en-US";
 
   if (!code) {
     return (
       <ClientShell>
         <div className="flex min-h-[100dvh] items-center justify-center p-4 text-muted-foreground">
-          Invalid reward link
+          {t("invalidRewardLink")}
         </div>
       </ClientShell>
     );
   }
 
-  if (isLoading) return <ClientLoading label="Loading reward…" />;
+  if (isLoading) return <ClientLoading label={t("loadingReward")} />;
 
   if (error || !reward) {
     return (
@@ -38,12 +40,10 @@ export default function RewardClaim() {
         <div className="flex min-h-[100dvh] items-center justify-center p-4">
           <motion.div variants={fadeUp} initial="initial" animate="animate" className="w-full max-w-md">
             <ClientCard className="p-8 text-center">
-              <h2 className="text-xl font-bold mb-2">No reward waiting</h2>
-              <p className="text-muted-foreground text-sm mb-6">
-                You don&apos;t have a prize to claim right now. Keep collecting stamps!
-              </p>
+              <h2 className="text-xl font-bold mb-2">{t("noRewardWaiting")}</h2>
+              <p className="text-muted-foreground text-sm mb-6">{t("noRewardDesc")}</p>
               <Button className="w-full h-12 rounded-xl" variant="outline" onClick={() => navigate(`/card/${code}`)}>
-                Back to my card
+                {t("backToMyCard")}
               </Button>
             </ClientCard>
           </motion.div>
@@ -51,6 +51,8 @@ export default function RewardClaim() {
       </ClientShell>
     );
   }
+
+  const earnedDate = new Date(reward.createdAt).toLocaleDateString(dateLocale, { dateStyle: "medium" });
 
   return (
     <ClientShell primaryColor={reward.primaryColor}>
@@ -65,7 +67,7 @@ export default function RewardClaim() {
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6 min-h-12 w-fit -ml-1 px-1"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          My card
+          {t("myCard")}
         </Link>
 
         <motion.div variants={celebrate} initial="initial" animate="animate" className="text-center mb-6">
@@ -73,7 +75,7 @@ export default function RewardClaim() {
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             {reward.businessName}
           </p>
-          <h1 className="text-2xl font-bold mt-1">Your prize</h1>
+          <h1 className="text-2xl font-bold mt-1">{t("yourPrize")}</h1>
         </motion.div>
 
         <motion.div variants={scaleIn} initial="initial" animate="animate">
@@ -88,12 +90,12 @@ export default function RewardClaim() {
                 {reward.rewardDescription}
               </p>
               <p className="text-xs text-muted-foreground mt-2">
-                Earned {new Date(reward.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })}
+                {t("earnedOn", { date: earnedDate })}
               </p>
 
               <div className="mt-8 p-5 rounded-2xl bg-muted/40 border border-border/50">
                 <QrCode className="h-5 w-5 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm font-medium mb-4">Show staff this code</p>
+                <p className="text-sm font-medium mb-4">{t("showStaffCode")}</p>
                 <motion.div
                   className="inline-block bg-white p-4 rounded-2xl shadow-sm"
                   animate={{ scale: [1, 1.02, 1] }}
@@ -103,9 +105,7 @@ export default function RewardClaim() {
                 </motion.div>
               </div>
 
-              <p className="text-xs text-muted-foreground mt-6">
-                Staff will mark this as redeemed when you collect your prize.
-              </p>
+              <p className="text-xs text-muted-foreground mt-6">{t("staffRedeemHint")}</p>
             </CardContent>
           </ClientCard>
         </motion.div>
@@ -117,7 +117,7 @@ export default function RewardClaim() {
             onClick={() => navigate(`/card/${reward.cardCode}`)}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to loyalty card
+            {t("backToLoyaltyCard")}
           </Button>
         </motion.div>
       </motion.div>
