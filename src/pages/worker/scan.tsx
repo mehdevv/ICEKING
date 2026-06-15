@@ -2,21 +2,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { usePurchaseScan, useConfirmPurchaseScan } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { scanResultVariants, vibrate } from "@/lib/motion";
 import { extractQrToken } from "@/lib/supabase";
 import { FRAUD_REASON_LABELS } from "@/api/fraud";
-import { CheckCircle, XCircle, Gift, ArrowLeft, Minus, Plus, ScanLine, CalendarClock } from "lucide-react";
+import { CheckCircle, XCircle, Gift, ArrowLeft, Minus, Plus, ScanLine, CalendarClock, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
+
+const SCANNER_ELEMENT_ID = "qr-scanner-region";
 
 type ScanResult = {
   approved: boolean;
@@ -67,61 +61,90 @@ export default function WorkerScan() {
   const [step, setStep] = useState<"scan" | "products" | "result">("scan");
   const [result, setResult] = useState<ScanResult | null>(null);
   const [productQtys, setProductQtys] = useState<ProductQty>({});
-  const [productsOpen, setProductsOpen] = useState(false);
-  const scannerRef = useRef<HTMLDivElement>(null);
-  const html5QrcodeRef = useRef<{ stop: () => Promise<void> } | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const html5QrcodeRef = useRef<InstanceType<typeof import("html5-qrcode").Html5Qrcode> | null>(null);
+  const processingRef = useRef(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleReset = useCallback(() => {
+  const stopScanner = useCallback(async () => {
+    const scanner = html5QrcodeRef.current;
+    html5QrcodeRef.current = null;
+    if (!scanner) return;
+    try {
+      await scanner.stop();
+    } catch {
+      // Scanner may already be stopped.
+    }
+    try {
+      scanner.clear();
+    } catch {
+      // clear() can fail if the element was unmounted.
+    }
+    const el = document.getElementById(SCANNER_ELEMENT_ID);
+    if (el) el.innerHTML = "";
+  }, []);
+
+  const handleReset = useCallback(async () => {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    processingRef.current = false;
+    await stopScanner();
     setStep("scan");
     setResult(null);
     setProductQtys({});
-    setProductsOpen(false);
-    setScanning(false);
-  }, []);
+    setCameraStarting(false);
+  }, [stopScanner]);
 
   useEffect(() => {
     if (step !== "result" || !result) return;
-    resetTimerRef.current = setTimeout(handleReset, 3000);
+    resetTimerRef.current = setTimeout(() => {
+      void handleReset();
+    }, 3000);
     return () => {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     };
   }, [step, result, handleReset]);
 
   useEffect(() => {
-    if (step !== "scan" || !scannerRef.current) return;
+    if (step !== "scan") {
+      void stopScanner();
+      return;
+    }
 
     let cancelled = false;
-    import("html5-qrcode").then(({ Html5Qrcode }) => {
+
+    const startCamera = async () => {
+      setCameraStarting(true);
+      await stopScanner();
       if (cancelled) return;
-      const scanner = new Html5Qrcode("qr-scanner-region");
-      html5QrcodeRef.current = scanner;
-      scanner
-        .start(
+
+      try {
+        const { Html5Qrcode } = await import("html5-qrcode");
+        if (cancelled || !document.getElementById(SCANNER_ELEMENT_ID)) return;
+
+        const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID);
+        html5QrcodeRef.current = scanner;
+
+        await scanner.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 250, height: 250 } },
           async (decodedText: string) => {
-            if (scanning) return;
-            setScanning(true);
+            if (processingRef.current) return;
+            processingRef.current = true;
+
             try {
-              await scanner.stop();
-              html5QrcodeRef.current = null;
-            } catch { /* ignore */ }
-            try {
+              await stopScanner();
+
               const scanResult = await purchaseScan.mutateAsync({
                 data: { clientQrToken: extractQrToken(decodedText) },
               });
               const r = normalizeScanResult(scanResult as Record<string, unknown>);
               setResult(r);
-              setScanning(false);
+
               if (r.approved) vibrate(50);
               else vibrate([100, 50, 100]);
 
               if (r.needsProducts && r.pendingScanId) {
                 setProductQtys({});
-                setProductsOpen(true);
                 setStep("products");
               } else {
                 setStep("result");
@@ -129,29 +152,36 @@ export default function WorkerScan() {
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : "Scan failed";
               toast({ title: "Scan failed", description: message, variant: "destructive" });
-              setScanning(false);
+              processingRef.current = false;
               setStep("scan");
             }
           },
           () => {},
-        )
-        .catch(() => {
+        );
+
+        if (!cancelled) setCameraStarting(false);
+      } catch {
+        if (!cancelled) {
+          setCameraStarting(false);
           toast({
             title: "Camera access denied",
             description: "Allow camera access to scan QR codes.",
             variant: "destructive",
           });
-        });
-    });
+        }
+      }
+    };
+
+    const timer = window.setTimeout(() => {
+      void startCamera();
+    }, 150);
 
     return () => {
       cancelled = true;
-      if (html5QrcodeRef.current) {
-        html5QrcodeRef.current.stop().catch(() => {});
-        html5QrcodeRef.current = null;
-      }
+      window.clearTimeout(timer);
+      void stopScanner();
     };
-  }, [step, scanning, purchaseScan, toast]);
+  }, [step, purchaseScan, toast, stopScanner]);
 
   const handleConfirmProducts = async () => {
     if (!result?.pendingScanId) return;
@@ -164,7 +194,6 @@ export default function WorkerScan() {
       });
       const merged = { ...result, ...normalizeScanResult(confirmed as Record<string, unknown>) };
       setResult(merged);
-      setProductsOpen(false);
       setStep("result");
       vibrate(50);
     } catch (err: unknown) {
@@ -185,7 +214,15 @@ export default function WorkerScan() {
 
         <div className="flex-1 flex flex-col items-center justify-center gap-6">
           <div className="relative w-full max-w-sm">
-            <div id="qr-scanner-region" ref={scannerRef} className="overflow-hidden rounded-2xl shadow-lg w-full aspect-square" />
+            <div
+              id={SCANNER_ELEMENT_ID}
+              className="overflow-hidden rounded-2xl shadow-lg w-full aspect-square bg-muted"
+            />
+            {cameraStarting && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-muted/90">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
             <div className="absolute inset-0 pointer-events-none rounded-2xl border-4 border-primary/60">
               <motion.div
                 className="absolute left-4 right-4 h-0.5 bg-primary/80"
@@ -207,9 +244,9 @@ export default function WorkerScan() {
     const products = result.products ?? [];
 
     return (
-      <div className="flex flex-col h-full p-4">
+      <div className="flex flex-col h-full p-4 pb-6">
         <div className="flex items-center gap-2 mb-4">
-          <Button variant="ghost" size="icon" onClick={handleReset} aria-label="Cancel">
+          <Button variant="ghost" size="icon" onClick={() => void handleReset()} aria-label="Cancel">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h2 className="text-xl font-bold">Select Products</h2>
@@ -218,61 +255,54 @@ export default function WorkerScan() {
           Customer: <span className="font-medium text-foreground">{result.clientName ?? "Unknown"}</span>
         </p>
 
-        <Sheet
-          open={productsOpen}
-          onOpenChange={(open) => {
-            setProductsOpen(open);
-            if (!open) handleReset();
-          }}
-        >
-          <SheetContent side="bottom" className="max-h-[85vh] rounded-t-2xl">
-            <SheetHeader>
-              <SheetTitle>Select products</SheetTitle>
-              <SheetDescription>
-                {products.length === 0
-                  ? "No products in catalog — confirm to add the stamp anyway."
-                  : "Choose what the customer bought."}
-              </SheetDescription>
-            </SheetHeader>
-            <div className="overflow-y-auto max-h-[50vh] space-y-3 py-4">
-              {products.map((p) => (
-                <Card key={p.id}>
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{p.name}</p>
-                      <p className="text-sm text-muted-foreground">{Number(p.price).toLocaleString()} DZD</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-10 w-10"
-                        onClick={() => setProductQtys((q) => ({ ...q, [p.id]: Math.max(0, (q[p.id] ?? 0) - 1) }))}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <span className="w-6 text-center font-mono font-semibold">{productQtys[p.id] ?? 0}</span>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-10 w-10"
-                        onClick={() => setProductQtys((q) => ({ ...q, [p.id]: (q[p.id] ?? 0) + 1 }))}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            <SheetFooter className="flex flex-col gap-2 sm:flex-col">
-              <Button className="w-full h-12" onClick={handleConfirmProducts} disabled={confirmScan.isPending}>
-                {confirmScan.isPending ? "Processing…" : "Confirm & Add Stamp"}
-              </Button>
-              <Button variant="ghost" className="w-full" onClick={handleReset}>Cancel</Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+        <div className="flex-1 overflow-y-auto space-y-3 min-h-0">
+          {products.length === 0 ? (
+            <Card>
+              <CardContent className="p-4 text-sm text-muted-foreground">
+                No products in catalog — confirm to add the stamp anyway.
+              </CardContent>
+            </Card>
+          ) : (
+            products.map((p) => (
+              <Card key={p.id}>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{p.name}</p>
+                    <p className="text-sm text-muted-foreground">{Number(p.price).toLocaleString()} DZD</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10"
+                      onClick={() => setProductQtys((q) => ({ ...q, [p.id]: Math.max(0, (q[p.id] ?? 0) - 1) }))}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="w-6 text-center font-mono font-semibold">{productQtys[p.id] ?? 0}</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10"
+                      onClick={() => setProductQtys((q) => ({ ...q, [p.id]: (q[p.id] ?? 0) + 1 }))}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        <div className="pt-4 space-y-2 shrink-0">
+          <Button className="w-full h-12" onClick={handleConfirmProducts} disabled={confirmScan.isPending}>
+            {confirmScan.isPending ? "Processing…" : "Confirm & Add Stamp"}
+          </Button>
+          <Button variant="ghost" className="w-full" onClick={() => void handleReset()}>
+            Cancel
+          </Button>
+        </div>
       </div>
     );
   }
@@ -293,7 +323,7 @@ export default function WorkerScan() {
     return (
       <AnimatePresence>
         <motion.div
-          className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center text-white ${bgClass}`}
+          className={`fixed inset-0 z-[60] flex flex-col items-center justify-center p-6 text-center text-white ${bgClass}`}
           variants={scanResultVariants}
           initial="initial"
           animate="animate"
@@ -337,11 +367,7 @@ export default function WorkerScan() {
             </>
           )}
           <p className="mt-8 text-sm opacity-75">Returning to scanner…</p>
-          <Button
-            variant="secondary"
-            className="mt-4"
-            onClick={handleReset}
-          >
+          <Button variant="secondary" className="mt-4" onClick={() => void handleReset()}>
             Scan Another
           </Button>
         </motion.div>
@@ -352,7 +378,7 @@ export default function WorkerScan() {
   return (
     <div className="flex flex-col h-full p-4 items-center justify-center gap-4">
       <p className="text-muted-foreground text-center">Something went wrong after the scan.</p>
-      <Button onClick={handleReset}>Back to scanner</Button>
+      <Button onClick={() => void handleReset()}>Back to scanner</Button>
     </div>
   );
 }

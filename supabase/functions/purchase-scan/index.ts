@@ -213,6 +213,7 @@ Deno.serve(async (req) => {
       .select("*", { count: "exact", head: true })
       .eq("client_id", client.id)
       .eq("status", "approved")
+      .gt("stamps_added", 0)
       .gte("scanned_at", todayStart.toISOString());
 
     if ((todayScans ?? 0) >= (settings?.max_scans_per_day ?? 2)) {
