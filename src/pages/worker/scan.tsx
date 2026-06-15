@@ -2,10 +2,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { usePurchaseScan, useConfirmPurchaseScan } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Drawer } from "@heroui/react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { scanResultVariants, vibrate } from "@/lib/motion";
+import { extractQrToken } from "@/lib/supabase";
 import { FRAUD_REASON_LABELS } from "@/api/fraud";
 import { CheckCircle, XCircle, Gift, ArrowLeft, Minus, Plus, ScanLine } from "lucide-react";
 import { useLocation } from "wouter";
@@ -26,6 +34,24 @@ type ScanResult = {
 
 type ProductQty = Record<string, number>;
 
+function normalizeScanResult(raw: Record<string, unknown>): ScanResult {
+  return {
+    approved: Boolean(raw.approved),
+    reason: (raw.reason as string | null) ?? null,
+    stampsAdded: Number(raw.stampsAdded ?? raw.stamps_added ?? 0),
+    currentStamps: Number(raw.currentStamps ?? raw.current_stamps ?? 0),
+    stampThreshold: Number(raw.stampThreshold ?? raw.stamp_threshold ?? 9),
+    rewardTriggered: Boolean(raw.rewardTriggered ?? raw.reward_triggered),
+    rewardDescription: (raw.rewardDescription ?? raw.reward_description) as string | null | undefined,
+    needsProducts: Boolean(raw.needsProducts ?? raw.needs_products),
+    products: Array.isArray(raw.products)
+      ? (raw.products as ScanResult["products"])
+      : [],
+    pendingScanId: (raw.pendingScanId ?? raw.pending_scan_id) as string | null | undefined,
+    clientName: (raw.clientName ?? raw.client_name) as string | null | undefined,
+  };
+}
+
 function fraudLabel(reason: string | null) {
   if (!reason) return "Scan was blocked";
   return FRAUD_REASON_LABELS[reason] ?? reason.replace(/_/g, " ");
@@ -39,7 +65,7 @@ export default function WorkerScan() {
   const [step, setStep] = useState<"scan" | "products" | "result">("scan");
   const [result, setResult] = useState<ScanResult | null>(null);
   const [productQtys, setProductQtys] = useState<ProductQty>({});
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(false);
   const scannerRef = useRef<HTMLDivElement>(null);
   const html5QrcodeRef = useRef<{ stop: () => Promise<void> } | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -50,7 +76,7 @@ export default function WorkerScan() {
     setStep("scan");
     setResult(null);
     setProductQtys({});
-    setDrawerOpen(false);
+    setProductsOpen(false);
     setScanning(false);
   }, []);
 
@@ -82,15 +108,18 @@ export default function WorkerScan() {
               html5QrcodeRef.current = null;
             } catch { /* ignore */ }
             try {
-              const scanResult = await purchaseScan.mutateAsync({ data: { clientQrToken: decodedText } });
-              const r = scanResult as unknown as ScanResult;
+              const scanResult = await purchaseScan.mutateAsync({
+                data: { clientQrToken: extractQrToken(decodedText) },
+              });
+              const r = normalizeScanResult(scanResult as Record<string, unknown>);
               setResult(r);
+              setScanning(false);
               if (r.approved) vibrate(50);
               else vibrate([100, 50, 100]);
 
-              if (r.needsProducts) {
+              if (r.needsProducts && r.pendingScanId) {
                 setProductQtys({});
-                setDrawerOpen(true);
+                setProductsOpen(true);
                 setStep("products");
               } else {
                 setStep("result");
@@ -99,6 +128,7 @@ export default function WorkerScan() {
               const message = err instanceof Error ? err.message : "Scan failed";
               toast({ title: "Scan failed", description: message, variant: "destructive" });
               setScanning(false);
+              setStep("scan");
             }
           },
           () => {},
@@ -130,9 +160,9 @@ export default function WorkerScan() {
       const confirmed = await confirmScan.mutateAsync({
         data: { pendingScanId: result.pendingScanId, products },
       });
-      const merged = { ...result, ...(confirmed as unknown as Partial<ScanResult>) };
+      const merged = { ...result, ...normalizeScanResult(confirmed as Record<string, unknown>) };
       setResult(merged);
-      setDrawerOpen(false);
+      setProductsOpen(false);
       setStep("result");
       vibrate(50);
     } catch (err: unknown) {
@@ -171,63 +201,77 @@ export default function WorkerScan() {
     );
   }
 
-  if (step === "products" && result?.products) {
-    return (
-      <>
-        <div className="flex flex-col h-full p-4 items-center justify-center">
-          <p className="text-muted-foreground">Select products for {result.clientName}</p>
-        </div>
+  if (step === "products" && result) {
+    const products = result.products ?? [];
 
-        <Drawer isOpen={drawerOpen} onOpenChange={setDrawerOpen}>
-          <Drawer.Backdrop>
-            <Drawer.Content placement="bottom">
-              <Drawer.Dialog>
-                <Drawer.Handle />
-                <Drawer.Header>
-                  <Drawer.Heading>Select Products</Drawer.Heading>
-                </Drawer.Header>
-                <Drawer.Body className="max-h-[60vh] overflow-y-auto space-y-3">
-                  {result.products.map((p) => (
-                    <Card key={p.id}>
-                      <CardContent className="p-4 flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">{p.name}</p>
-                          <p className="text-sm text-muted-foreground">{Number(p.price).toLocaleString()} DZD</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-10 w-10 min-h-12 min-w-12"
-                            onClick={() => setProductQtys((q) => ({ ...q, [p.id]: Math.max(0, (q[p.id] ?? 0) - 1) }))}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="w-6 text-center font-mono font-semibold">{productQtys[p.id] ?? 0}</span>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-10 w-10 min-h-12 min-w-12"
-                            onClick={() => setProductQtys((q) => ({ ...q, [p.id]: (q[p.id] ?? 0) + 1 }))}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Drawer.Body>
-                <Drawer.Footer className="flex flex-col gap-2">
-                  <Button size="lg" fullWidth onClick={handleConfirmProducts} disabled={confirmScan.isPending}>
-                    {confirmScan.isPending ? "Processing…" : "Confirm & Add Stamp"}
-                  </Button>
-                  <Button variant="ghost" fullWidth onClick={handleReset}>Cancel</Button>
-                </Drawer.Footer>
-              </Drawer.Dialog>
-            </Drawer.Content>
-          </Drawer.Backdrop>
-        </Drawer>
-      </>
+    return (
+      <div className="flex flex-col h-full p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Button variant="ghost" size="icon" onClick={handleReset} aria-label="Cancel">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h2 className="text-xl font-bold">Select Products</h2>
+        </div>
+        <p className="text-muted-foreground text-sm mb-4">
+          Customer: <span className="font-medium text-foreground">{result.clientName ?? "Unknown"}</span>
+        </p>
+
+        <Sheet
+          open={productsOpen}
+          onOpenChange={(open) => {
+            setProductsOpen(open);
+            if (!open) handleReset();
+          }}
+        >
+          <SheetContent side="bottom" className="max-h-[85vh] rounded-t-2xl">
+            <SheetHeader>
+              <SheetTitle>Select products</SheetTitle>
+              <SheetDescription>
+                {products.length === 0
+                  ? "No products in catalog — confirm to add the stamp anyway."
+                  : "Choose what the customer bought."}
+              </SheetDescription>
+            </SheetHeader>
+            <div className="overflow-y-auto max-h-[50vh] space-y-3 py-4">
+              {products.map((p) => (
+                <Card key={p.id}>
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-sm text-muted-foreground">{Number(p.price).toLocaleString()} DZD</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10"
+                        onClick={() => setProductQtys((q) => ({ ...q, [p.id]: Math.max(0, (q[p.id] ?? 0) - 1) }))}
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-6 text-center font-mono font-semibold">{productQtys[p.id] ?? 0}</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10"
+                        onClick={() => setProductQtys((q) => ({ ...q, [p.id]: (q[p.id] ?? 0) + 1 }))}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <SheetFooter className="flex flex-col gap-2 sm:flex-col">
+              <Button className="w-full h-12" onClick={handleConfirmProducts} disabled={confirmScan.isPending}>
+                {confirmScan.isPending ? "Processing…" : "Confirm & Add Stamp"}
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={handleReset}>Cancel</Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      </div>
     );
   }
 
@@ -285,5 +329,10 @@ export default function WorkerScan() {
     );
   }
 
-  return null;
+  return (
+    <div className="flex flex-col h-full p-4 items-center justify-center gap-4">
+      <p className="text-muted-foreground text-center">Something went wrong after the scan.</p>
+      <Button onClick={handleReset}>Back to scanner</Button>
+    </div>
+  );
 }
